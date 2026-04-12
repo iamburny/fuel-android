@@ -1,0 +1,30 @@
+# Gradle
+.gradle/
+build/
+
+# Kotlin
+.kotlin/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Android
+local.properties
+.navigation/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Secrets
+secrets.properties
+
+# Logs and temporary files
+*.log
+java_pid*
+
+# System
+.DS_Store
+Thumbs.db
