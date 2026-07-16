@@ -2,6 +2,7 @@ package uk.co.fuelprices.ui.screens.detail
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -12,15 +13,21 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.*
+import uk.co.fuelprices.data.api.*
+import uk.co.fuelprices.ui.components.BarChart
+import uk.co.fuelprices.ui.components.FuelMapView
+import uk.co.fuelprices.ui.components.MapMarker
+import uk.co.fuelprices.ui.theme.fuelLabel
+import java.time.DayOfWeek
+import java.time.LocalDate
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun DetailScreen(
     onBack: () -> Unit,
@@ -64,15 +71,13 @@ fun DetailScreen(
                 .verticalScroll(rememberScrollState())
         ) {
             // Mini map
-            val pos = LatLng(station.latitude, station.longitude)
-            GoogleMap(
+            FuelMapView(
                 modifier = Modifier.fillMaxWidth().height(200.dp),
-                cameraPositionState = rememberCameraPositionState {
-                    position = CameraPosition.fromLatLngZoom(pos, 15f)
-                },
-            ) {
-                Marker(state = MarkerState(pos), title = station.name)
-            }
+                centerLat = station.latitude,
+                centerLng = station.longitude,
+                zoomLevel = 15f,
+                markers = listOf(MapMarker(station.latitude, station.longitude, station.name)),
+            )
 
             // Station info
             Column(Modifier.padding(16.dp)) {
@@ -81,7 +86,31 @@ fun DetailScreen(
                     Spacer(Modifier.height(2.dp))
                 }
 
-                val address = listOfNotNull(station.addressLine1, station.town, station.postcode)
+                // Status badges
+                val badges = buildList {
+                    if (station.temporaryClosure) add("Temporarily Closed" to MaterialTheme.colorScheme.error)
+                    if (station.isMotorway) add("Motorway Services" to Color(0xFF3B82F6))
+                    if (station.isSupermarket) add("Supermarket" to Color(0xFF22C55E))
+                }
+                if (badges.isNotEmpty()) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    ) {
+                        badges.forEach { (label, color) ->
+                            SuggestionChip(
+                                onClick = {},
+                                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                                colors = SuggestionChipDefaults.suggestionChipColors(
+                                    containerColor = color.copy(alpha = 0.15f),
+                                    labelColor = color,
+                                ),
+                            )
+                        }
+                    }
+                }
+
+                val address = listOfNotNull(station.addressLine1, station.addressLine2, station.town, station.postcode)
                     .joinToString(", ")
                 if (address.isNotBlank()) {
                     Text(address, style = MaterialTheme.typography.bodyMedium)
@@ -90,6 +119,21 @@ fun DetailScreen(
 
                 station.distanceMiles?.let {
                     Text("%.1f miles away".format(it), style = MaterialTheme.typography.bodySmall)
+                }
+
+                // Phone
+                station.phone?.let { phone ->
+                    Spacer(Modifier.height(4.dp))
+                    TextButton(
+                        onClick = {
+                            context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")))
+                        },
+                        contentPadding = PaddingValues(0.dp),
+                    ) {
+                        Icon(Icons.Default.Phone, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(phone)
+                    }
                 }
 
                 // Directions button
@@ -116,7 +160,7 @@ fun DetailScreen(
             station.prices.sortedBy { it.pricePence }.forEach { price ->
                 ListItem(
                     headlineContent = {
-                        Text(fuelTypeLabel(price.fuelType), fontWeight = FontWeight.Medium)
+                        Text(fuelLabel(price.fuelType), fontWeight = FontWeight.Medium)
                     },
                     supportingContent = {
                         // Compliance: show original timestamp unmodified
@@ -127,7 +171,7 @@ fun DetailScreen(
                             "%.1fp".format(price.pricePence),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = FuelTypes.color(price.fuelType),
                         )
                     },
                 )
@@ -143,19 +187,102 @@ fun DetailScreen(
 
             HorizontalDivider()
 
-            // Price history
+            // Amenities
+            val amenityItems = station.amenities.toAmenitiesDisplayList()
+            if (amenityItems.isNotEmpty()) {
+                Text(
+                    "Amenities",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 4.dp),
+                )
+                FlowRow(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    amenityItems.forEach { label ->
+                        AssistChip(
+                            onClick = {},
+                            label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+                        )
+                    }
+                }
+                HorizontalDivider()
+            }
+
+            // Opening hours
+            station.openingHours?.usualDays?.let { days ->
+                Text(
+                    "Opening Hours",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 4.dp),
+                )
+                OpeningHoursTable(days)
+
+                station.openingHours?.bankHolidays?.let { holidays ->
+                    if (holidays.isNotEmpty()) {
+                        Text(
+                            "Bank Holidays",
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(16.dp, 8.dp, 16.dp, 4.dp),
+                        )
+                        holidays.forEach { bh ->
+                            val hours = when {
+                                bh.is24Hours == true -> "24 hours"
+                                bh.openTime != null && bh.closeTime != null -> "${bh.openTime} – ${bh.closeTime}"
+                                else -> "Closed"
+                            }
+                            ListItem(
+                                headlineContent = { Text(bh.type ?: "Bank Holiday") },
+                                trailingContent = { Text(hours) },
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider()
+            }
+
+            // Price history bar chart
             if (state.priceHistory.isNotEmpty()) {
                 Text(
                     "Price History (30 days)",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 4.dp),
                 )
-                state.priceHistory.takeLast(10).forEach { point ->
-                    ListItem(
-                        headlineContent = { Text("%.1fp".format(point.pricePence)) },
-                        supportingContent = { Text(point.reportedAt.take(10)) },
+                BarChart(
+                    values = state.priceHistory.map { it.pricePence },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                // Date range + price range labels
+                val minPrice = state.priceHistory.minOf { it.pricePence }
+                val maxPrice = state.priceHistory.maxOf { it.pricePence }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        state.priceHistory.first().reportedAt.take(10),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                    Text(
+                        state.priceHistory.last().reportedAt.take(10),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline,
                     )
                 }
+                Text(
+                    "%.1fp – %.1fp".format(minPrice, maxPrice),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
             }
 
             HorizontalDivider()
@@ -184,12 +311,46 @@ fun DetailScreen(
     }
 }
 
-private fun fuelTypeLabel(code: String): String = when (code) {
-    "E10" -> "Unleaded (E10)"
-    "E5" -> "Super Unleaded (E5)"
-    "B7" -> "Diesel (B7)"
-    "SDV" -> "Super Diesel"
-    "B10" -> "Diesel (B10)"
-    "HVO" -> "HVO Diesel"
-    else -> code
+@Composable
+private fun OpeningHoursTable(days: UsualDaysDto) {
+    val today = LocalDate.now().dayOfWeek
+    val dayMap = mapOf(
+        "Monday" to DayOfWeek.MONDAY, "Tuesday" to DayOfWeek.TUESDAY,
+        "Wednesday" to DayOfWeek.WEDNESDAY, "Thursday" to DayOfWeek.THURSDAY,
+        "Friday" to DayOfWeek.FRIDAY, "Saturday" to DayOfWeek.SATURDAY,
+        "Sunday" to DayOfWeek.SUNDAY,
+    )
+
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        days.asList().forEach { (dayName, hours) ->
+            val isToday = dayMap[dayName] == today
+            val bg = if (isToday) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(bg)
+                    .padding(vertical = 6.dp, horizontal = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    dayName,
+                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                val hoursText = when {
+                    hours == null -> "—"
+                    hours.is24Hours == true -> "24 hours"
+                    hours.open != null && hours.close != null -> "${hours.open} – ${hours.close}"
+                    else -> "—"
+                }
+                Text(
+                    hoursText,
+                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.End,
+                )
+            }
+        }
+    }
 }

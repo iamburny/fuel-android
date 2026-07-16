@@ -1,11 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
-    id("org.jetbrains.kotlin.plugin.serialization")
 }
+
+// Maps SDK API key — kept out of version control. Add MAPS_API_KEY=... to local.properties.
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val mapsApiKey: String = localProperties.getProperty("MAPS_API_KEY") ?: ""
 
 android {
     namespace = "uk.co.fuelprices"
@@ -13,25 +21,22 @@ android {
 
     defaultConfig {
         applicationId = "uk.co.fuelprices"
-        minSdk = 26
+        minSdk = 29
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
 
-        // Backend API base URL — override per build variant
-        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8000\"")
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     buildFeatures {
         compose = true
-        buildConfig = true
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            buildConfigField("String", "API_BASE_URL", "\"https://your-prod-api.example.com\"")
         }
     }
 
@@ -46,6 +51,9 @@ android {
 }
 
 dependencies {
+    // Shared data/di/util/car code
+    implementation(project(":core"))
+
     // Core
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
@@ -68,29 +76,14 @@ dependencies {
     ksp("com.google.dagger:hilt-compiler:2.52")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
 
-    // Networking
-    implementation("com.squareup.retrofit2:retrofit:2.11.0")
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-    implementation("com.jakewharton.retrofit:retrofit2-kotlinx-serialization-converter:1.0.0")
-
-    // Room (offline cache)
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
-
-    // Location
-    implementation("com.google.android.gms:play-services-location:21.3.0")
-
-    // Maps
-    implementation("com.google.maps.android:maps-compose:6.2.1")
+    // Maps (Google Maps SDK — requires MAPS_API_KEY in local.properties + billing enabled)
     implementation("com.google.android.gms:play-services-maps:19.0.0")
-
-    // DataStore (token storage)
-    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("com.google.maps.android:maps-compose:6.4.1")
 
     // Firebase Cloud Messaging
     implementation(platform("com.google.firebase:firebase-bom:33.6.0"))
     implementation("com.google.firebase:firebase-messaging-ktx")
+
+    // Android Auto phone projection (Car App Library)
+    implementation("androidx.car.app:app-projected:1.7.0")
 }

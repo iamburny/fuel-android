@@ -19,3 +19,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "FuelPricesUK"
 include(":app")
+include(":core")
+include(":automotive")

@@ -18,6 +18,7 @@ data class DetailUiState(
     val station: StationDto? = null,
     val priceHistory: List<PriceHistoryPoint> = emptyList(),
     val isFavourite: Boolean = false,
+    val favouriteId: Int? = null,
     val error: String? = null,
 )
 
@@ -46,10 +47,17 @@ class DetailViewModel @Inject constructor(
                     repo.getPriceHistory(stationId, fuelType).history
                 } catch (_: Exception) { emptyList() }
 
+                // Check if this station is already a favourite
+                val existingFav = try {
+                    repo.getFavourites().find { it.stationId == stationId }
+                } catch (_: Exception) { null }
+
                 _state.value = DetailUiState(
                     isLoading = false,
                     station = station,
                     priceHistory = history,
+                    isFavourite = existingFav != null,
+                    favouriteId = existingFav?.id,
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoading = false, error = e.message)
@@ -60,11 +68,13 @@ class DetailViewModel @Inject constructor(
     fun toggleFavourite() {
         viewModelScope.launch {
             try {
-                if (_state.value.isFavourite) {
-                    // Would need the favourite ID — simplified here
+                val current = _state.value
+                if (current.isFavourite && current.favouriteId != null) {
+                    repo.removeFavourite(current.favouriteId)
+                    _state.value = current.copy(isFavourite = false, favouriteId = null)
                 } else {
-                    repo.addFavourite(stationId)
-                    _state.value = _state.value.copy(isFavourite = true)
+                    val fav = repo.addFavourite(stationId)
+                    _state.value = current.copy(isFavourite = true, favouriteId = fav.id)
                 }
             } catch (_: Exception) { }
         }

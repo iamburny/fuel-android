@@ -1,9 +1,117 @@
 package uk.co.fuelprices.data.api
 
+import androidx.compose.ui.graphics.Color
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
+
+// ── Fuel type constants ─────────────────────────────────
+
+object FuelTypes {
+    val ALL = listOf("E10", "E5", "B7_STANDARD", "B7_PREMIUM", "B10", "HVO")
+
+    val SHORT_LABELS = mapOf(
+        "E10" to "E10",
+        "E5" to "E5",
+        "B7_STANDARD" to "Diesel",
+        "B7_PREMIUM" to "Super Diesel",
+        "B10" to "B10",
+        "HVO" to "HVO",
+    )
+
+    val LONG_LABELS = mapOf(
+        "E10" to "Unleaded (E10)",
+        "E5" to "Super Unleaded (E5)",
+        "B7_STANDARD" to "Diesel (B7)",
+        "B7_PREMIUM" to "Premium Diesel (B7)",
+        "B10" to "Biodiesel (B10)",
+        "HVO" to "HVO Diesel",
+    )
+
+    val COLORS = mapOf(
+        "E10" to Color(0xFF22C55E),       // green
+        "E5" to Color(0xFF3B82F6),        // blue
+        "B7_STANDARD" to Color(0xFFF59E0B), // amber
+        "B7_PREMIUM" to Color(0xFFEF4444),  // red
+        "B10" to Color(0xFFA855F7),       // purple
+        "HVO" to Color(0xFF14B8A6),       // teal
+    )
+
+    fun shortLabel(code: String) = SHORT_LABELS[code] ?: code
+    fun longLabel(code: String) = LONG_LABELS[code] ?: code
+    fun color(code: String) = COLORS[code] ?: Color(0xFF9CA3AF)
+}
 
 // ── Station & Price DTOs ─────────────────────────────────
+
+// The backend stores `amenities` as whatever JSON the Gov Fuel Finder ingestion produced —
+// sometimes a flat array of enabled amenity keys (`["adblue_packaged", "car_wash"]`), sometimes
+// an object of key -> boolean. It's never guaranteed to match a fixed schema, so this is read as
+// a raw JsonElement rather than a typed object (a strict object type throws on the array shape).
+private val AMENITY_LABELS = mapOf(
+    "adblue_pumps" to "AdBlue Pumps",
+    "adblue_packaged" to "AdBlue Packaged",
+    "lpg_pumps" to "LPG",
+    "car_wash" to "Car Wash",
+    "air_pump_or_screenwash" to "Air / Screenwash",
+    "water_filling" to "Water",
+    "twenty_four_hour_fuel" to "24-Hour Fuel",
+    "customer_toilets" to "Toilets",
+)
+
+private fun prettifyAmenityKey(key: String): String =
+    AMENITY_LABELS[key] ?: key.replace('_', ' ').replaceFirstChar { it.uppercase() }
+
+fun JsonElement?.toAmenitiesDisplayList(): List<String> = when (this) {
+    is JsonArray -> mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.map(::prettifyAmenityKey)
+    is JsonObject -> entries
+        .filter { (_, v) -> (v as? JsonPrimitive)?.booleanOrNull == true }
+        .map { (k, _) -> prettifyAmenityKey(k) }
+    else -> emptyList()
+}
+
+@Serializable
+data class DayHoursDto(
+    val open: String? = null,
+    val close: String? = null,
+    @SerialName("is_24_hours") val is24Hours: Boolean? = null,
+)
+
+@Serializable
+data class BankHolidayDto(
+    val type: String? = null,
+    @SerialName("open_time") val openTime: String? = null,
+    @SerialName("close_time") val closeTime: String? = null,
+    @SerialName("is_24_hours") val is24Hours: Boolean? = null,
+)
+
+@Serializable
+data class UsualDaysDto(
+    val monday: DayHoursDto? = null,
+    val tuesday: DayHoursDto? = null,
+    val wednesday: DayHoursDto? = null,
+    val thursday: DayHoursDto? = null,
+    val friday: DayHoursDto? = null,
+    val saturday: DayHoursDto? = null,
+    val sunday: DayHoursDto? = null,
+) {
+    fun asList(): List<Pair<String, DayHoursDto?>> = listOf(
+        "Monday" to monday, "Tuesday" to tuesday, "Wednesday" to wednesday,
+        "Thursday" to thursday, "Friday" to friday,
+        "Saturday" to saturday, "Sunday" to sunday,
+    )
+}
+
+@Serializable
+data class OpeningHoursDto(
+    @SerialName("usual_days") val usualDays: UsualDaysDto? = null,
+    @SerialName("bank_holidays") val bankHolidays: List<BankHolidayDto>? = null,
+)
 
 @Serializable
 data class StationDto(
@@ -12,11 +120,19 @@ data class StationDto(
     val name: String,
     val brand: String? = null,
     val operator: String? = null,
+    val phone: String? = null,
     @SerialName("address_line1") val addressLine1: String? = null,
+    @SerialName("address_line2") val addressLine2: String? = null,
     val town: String? = null,
+    val county: String? = null,
     val postcode: String? = null,
     val latitude: Double,
     val longitude: Double,
+    @SerialName("temporary_closure") val temporaryClosure: Boolean = false,
+    @SerialName("is_motorway") val isMotorway: Boolean = false,
+    @SerialName("is_supermarket") val isSupermarket: Boolean = false,
+    val amenities: JsonElement? = null,
+    @SerialName("opening_hours") val openingHours: OpeningHoursDto? = null,
     @SerialName("distance_miles") val distanceMiles: Double? = null,
     val prices: List<PriceDto> = emptyList(),
 )

@@ -13,7 +13,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
-import uk.co.fuelprices.BuildConfig
+import uk.co.fuelprices.core.BuildConfig
 import uk.co.fuelprices.data.api.FuelPricesApi
 import uk.co.fuelprices.data.db.FuelDatabase
 import uk.co.fuelprices.data.repository.TokenStore
