@@ -15,6 +15,15 @@ interface FuelPricesApi {
         @Query("limit") limit: Int = 20,
     ): StationListResponse
 
+    @GET("api/stations/bounds")
+    suspend fun getStationsInBounds(
+        @Query("minLat") minLat: Double,
+        @Query("maxLat") maxLat: Double,
+        @Query("minLng") minLng: Double,
+        @Query("maxLng") maxLng: Double,
+        @Query("limit") limit: Int = 100,
+    ): StationListResponse
+
     @GET("api/stations/{id}")
     suspend fun getStation(@Path("id") stationId: Int): StationDto
 

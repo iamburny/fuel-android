@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.LocalGasStation
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -73,8 +74,11 @@ fun NearbyScreen(
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
+            // Falls back to the GPS-anchored station set until the user's first drag produces a
+            // viewport load; the bottom list panel below always keeps using state.stations,
+            // unaffected by dragging.
             val mapMarkers = if (!state.isLoading) {
-                state.stations.map { station ->
+                (state.viewportStations ?: state.stations).map { station ->
                     val cheapestPrice = station.prices
                         .filter { it.fuelType == state.selectedFuelType }
                         .minByOrNull { it.pricePence }
@@ -101,6 +105,8 @@ fun NearbyScreen(
                     zoomLevel = 12f,
                     markers = mapMarkers,
                     onMarkerClick = onStationClick,
+                    recenterKey = state.cameraRecenterToken,
+                    onCameraIdle = { bounds -> viewModel.loadStationsInBounds(bounds) },
                 )
             } else {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -124,6 +130,20 @@ fun NearbyScreen(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                 )
+            }
+
+            // Shown only once the user has dragged away from their GPS location — auto-recenter
+            // on filter/radius/mode changes was removed so it doesn't fight the drag, so a manual
+            // way back is needed (standard Google Maps convention).
+            if (state.isOffGpsCenter) {
+                SmallFloatingActionButton(
+                    onClick = { viewModel.recenterOnGps() },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp),
+                ) {
+                    Icon(Icons.Default.MyLocation, contentDescription = "Recenter on my location")
+                }
             }
 
             if (showPanel) {

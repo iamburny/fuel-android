@@ -54,6 +54,34 @@ class FuelRepository @Inject constructor(
         }
     }
 
+    /**
+     * Stations within an exact lat/lng box (a map viewport) — cache-first via the same DAO
+     * bounding-box query [getNearbyStations] uses internally, network fallback via the bounds
+     * endpoint. Unlike [getNearbyStations], a stale-cache fallback here stays scoped to the box
+     * (via [freshAfter] = 0) rather than [FuelDatabase]'s `getAllStations()` — that would return
+     * arbitrary stations unrelated to the dragged viewport.
+     */
+    suspend fun getStationsInBounds(
+        minLat: Double, maxLat: Double, minLng: Double, maxLng: Double,
+    ): StationListResponse {
+        val freshAfter = System.currentTimeMillis() - CACHE_TTL_MILLIS
+        val cached = dao.getFreshStationsNear(minLat, maxLat, minLng, maxLng, freshAfter)
+            .map { it.toDto(originLat = null, originLng = null) }
+        if (cached.isNotEmpty()) {
+            return StationListResponse(count = cached.size, stations = cached)
+        }
+
+        return try {
+            val response = api.getStationsInBounds(minLat, maxLat, minLng, maxLng)
+            cacheStations(response.stations)
+            response
+        } catch (e: Exception) {
+            val stale = dao.getFreshStationsNear(minLat, maxLat, minLng, maxLng, freshAfter = 0L)
+                .map { it.toDto(originLat = null, originLng = null) }
+            StationListResponse(count = stale.size, stations = stale)
+        }
+    }
+
     suspend fun getStation(id: Int): StationDto {
         return try {
             val station = api.getStation(id)

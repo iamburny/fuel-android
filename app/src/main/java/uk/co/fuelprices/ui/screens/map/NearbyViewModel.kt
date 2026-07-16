@@ -2,6 +2,7 @@ package uk.co.fuelprices.ui.screens.map
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.android.gms.maps.model.LatLngBounds
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -30,6 +31,15 @@ data class NearbyUiState(
     val userLng: Double? = null,
     val discrepancyReportUrl: String = "",
     val error: String? = null,
+    // Stations for whatever map area the user last dragged to — null until the first drag, at
+    // which point map pins switch to this instead of the GPS-anchored `stations`. The bottom
+    // list panel always keeps using `stations`, unaffected by dragging.
+    val viewportStations: List<StationDto>? = null,
+    // Bumped only when the map should jump to userLat/userLng — never on every reload, so
+    // changing the radius/fuel filter/mode doesn't fight a drag by snapping the camera back.
+    val cameraRecenterToken: Int = 0,
+    // True once the user has dragged the map away from GPS-center — shows a recenter button.
+    val isOffGpsCenter: Boolean = false,
 )
 
 @HiltViewModel
@@ -43,6 +53,7 @@ class NearbyViewModel @Inject constructor(
     val state: StateFlow<NearbyUiState> = _state.asStateFlow()
 
     private var searchJob: Job? = null
+    private var boundsJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -81,16 +92,49 @@ class NearbyViewModel @Inject constructor(
                 // new fetch, just a client-side re-filter for display.
                 val response = repo.getNearbyStations(lat, lng, _state.value.radiusMiles)
 
+                // Only jump the camera to GPS the first time we get a real fix — subsequent
+                // reloads (radius/fuel/mode changes) shouldn't yank the map back if the user has
+                // since dragged it elsewhere.
+                val isFirstFix = _state.value.userLat == null
                 _state.value = _state.value.copy(
                     isLoading = false,
                     stations = response.stations,
                     userLat = lat,
                     userLng = lng,
+                    cameraRecenterToken = if (isFirstFix) _state.value.cameraRecenterToken + 1 else _state.value.cameraRecenterToken,
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoading = false, error = e.message)
             }
         }
+    }
+
+    /** Called when the map's drag gesture ends, with the newly visible viewport. */
+    fun loadStationsInBounds(bounds: LatLngBounds) {
+        boundsJob?.cancel()
+        boundsJob = viewModelScope.launch {
+            _state.value = _state.value.copy(isOffGpsCenter = true)
+            try {
+                val response = repo.getStationsInBounds(
+                    minLat = bounds.southwest.latitude, maxLat = bounds.northeast.latitude,
+                    minLng = bounds.southwest.longitude, maxLng = bounds.northeast.longitude,
+                )
+                _state.value = _state.value.copy(viewportStations = response.stations)
+            } catch (e: Exception) {
+                // Keep showing whatever was already on the map rather than clearing pins on a
+                // transient network failure mid-drag.
+            }
+        }
+    }
+
+    /** Jumps the map back to the user's GPS location and reverts pins to the GPS-anchored set. */
+    fun recenterOnGps() {
+        boundsJob?.cancel()
+        _state.value = _state.value.copy(
+            viewportStations = null,
+            isOffGpsCenter = false,
+            cameraRecenterToken = _state.value.cameraRecenterToken + 1,
+        )
     }
 
     fun setFuelType(type: String) {
