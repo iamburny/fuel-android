@@ -114,11 +114,17 @@ fun NearbyScreen(
                 }
             }
 
-            // Currently filtered fuel type, always visible regardless of panel state.
+            // Currently filtered fuel type, always visible regardless of panel state. Tapping it
+            // cycles to the next fuel type — a quick way to flip through prices without opening
+            // the search panel's chip row.
             Surface(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(12.dp),
+                    .padding(12.dp)
+                    .clickable {
+                        val nextIndex = (FuelTypes.ALL.indexOf(state.selectedFuelType) + 1) % FuelTypes.ALL.size
+                        viewModel.setFuelType(FuelTypes.ALL[nextIndex])
+                    },
                 shape = RoundedCornerShape(50),
                 color = FuelTypes.color(state.selectedFuelType),
                 shadowElevation = 4.dp,
