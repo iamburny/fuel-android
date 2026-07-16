@@ -2,17 +2,13 @@ package uk.co.fuelprices.data.repository
 
 import uk.co.fuelprices.data.api.*
 import uk.co.fuelprices.data.db.*
+import uk.co.fuelprices.util.haversineMiles
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.atan2
 import kotlin.math.cos
-import kotlin.math.pow
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 private const val CACHE_TTL_MILLIS = 24 * 60 * 60 * 1000L // 24 hours
 private const val MILES_PER_DEGREE_LAT = 69.0
-private const val EARTH_RADIUS_MILES = 3958.8
 
 @Singleton
 class FuelRepository @Inject constructor(
@@ -201,13 +197,4 @@ class FuelRepository @Inject constructor(
             PriceDto(fuelType = it.fuelType, pricePence = it.pricePence, reportedAt = it.reportedAt)
         },
     )
-}
-
-private fun haversineMiles(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
-    val dLat = Math.toRadians(lat2 - lat1)
-    val dLng = Math.toRadians(lng2 - lng1)
-    val a = sin(dLat / 2).pow(2) +
-        cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLng / 2).pow(2)
-    val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-    return EARTH_RADIUS_MILES * c
 }

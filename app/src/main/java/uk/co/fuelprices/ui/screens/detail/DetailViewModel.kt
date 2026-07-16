@@ -8,9 +8,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import uk.co.fuelprices.data.api.NationalAverageDto
 import uk.co.fuelprices.data.api.PriceHistoryPoint
 import uk.co.fuelprices.data.api.StationDto
 import uk.co.fuelprices.data.repository.FuelRepository
+import uk.co.fuelprices.data.repository.UserPreferencesStore
+import uk.co.fuelprices.util.LocationHelper
+import uk.co.fuelprices.util.estimateDriveCostPounds
+import uk.co.fuelprices.util.haversineMiles
 import javax.inject.Inject
 
 data class DetailUiState(
@@ -19,6 +24,9 @@ data class DetailUiState(
     val priceHistory: List<PriceHistoryPoint> = emptyList(),
     val isFavourite: Boolean = false,
     val favouriteId: Int? = null,
+    val nationalAverages: List<NationalAverageDto> = emptyList(),
+    val distanceMiles: Double? = null,
+    val driveCostPounds: Double? = null,
     val error: String? = null,
 )
 
@@ -26,6 +34,8 @@ data class DetailUiState(
 class DetailViewModel @Inject constructor(
     savedState: SavedStateHandle,
     private val repo: FuelRepository,
+    private val locationHelper: LocationHelper,
+    private val preferencesStore: UserPreferencesStore,
 ) : ViewModel() {
 
     private val stationId: Int = savedState.get<Int>("stationId") ?: 0
@@ -52,12 +62,34 @@ class DetailViewModel @Inject constructor(
                     repo.getFavourites().find { it.stationId == stationId }
                 } catch (_: Exception) { null }
 
+                // Unconditional — needed for the vs-national-average price delta regardless of
+                // whether MPG/tank capacity are set (unlike the car app's conditional fetch,
+                // which is only used there for savings-based sorting).
+                val averages = try { repo.getNationalAverages().averages } catch (_: Exception) { emptyList() }
+
+                val preferences = preferencesStore.get()
+                var distanceMiles: Double? = null
+                var driveCost: Double? = null
+                if (preferences.canEstimateDriveCost) {
+                    val location = locationHelper.getCurrentLocation()
+                    val price = station.prices.firstOrNull { it.fuelType == preferences.fuelType }?.pricePence
+                    if (location != null && price != null) {
+                        distanceMiles = haversineMiles(
+                            location.latitude, location.longitude, station.latitude, station.longitude,
+                        )
+                        driveCost = estimateDriveCostPounds(distanceMiles, preferences.mpg!!, price)
+                    }
+                }
+
                 _state.value = DetailUiState(
                     isLoading = false,
                     station = station,
                     priceHistory = history,
                     isFavourite = existingFav != null,
                     favouriteId = existingFav?.id,
+                    nationalAverages = averages,
+                    distanceMiles = distanceMiles,
+                    driveCostPounds = driveCost,
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoading = false, error = e.message)

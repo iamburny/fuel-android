@@ -117,8 +117,18 @@ fun DetailScreen(
                     Spacer(Modifier.height(4.dp))
                 }
 
-                station.distanceMiles?.let {
+                // station.distanceMiles is always null here — the station-by-id endpoint doesn't
+                // return it (only /nearby and /cheapest do). state.distanceMiles is computed
+                // client-side against the current location instead (see DetailViewModel).
+                state.distanceMiles?.let {
                     Text("%.1f miles away".format(it), style = MaterialTheme.typography.bodySmall)
+                }
+                state.driveCostPounds?.let {
+                    Text(
+                        "Est. £%.2f in fuel to get here".format(it),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
                 }
 
                 // Phone
@@ -158,13 +168,25 @@ fun DetailScreen(
             )
 
             station.prices.sortedBy { it.pricePence }.forEach { price ->
+                val nationalAvgPence = state.nationalAverages
+                    .firstOrNull { it.fuelType == price.fuelType }?.avgPricePence
                 ListItem(
                     headlineContent = {
                         Text(fuelLabel(price.fuelType), fontWeight = FontWeight.Medium)
                     },
                     supportingContent = {
-                        // Compliance: show original timestamp unmodified
-                        Text("Reported: ${price.reportedAt}")
+                        Column {
+                            // Compliance: show original timestamp unmodified
+                            Text("Reported: ${price.reportedAt}")
+                            if (nationalAvgPence != null) {
+                                val delta = price.pricePence - nationalAvgPence
+                                Text(
+                                    "%+.1fp vs national avg".format(delta),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (delta <= 0) Color(0xFF22C55E) else MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        }
                     },
                     trailingContent = {
                         Text(
