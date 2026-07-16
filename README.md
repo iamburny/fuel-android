@@ -30,9 +30,19 @@ Native Kotlin Android app for viewing UK fuel prices from the Government Fuel Fi
 
 The release build is signed with the **debug keystore** so it installs via sideload for on-device testing, and its cert SHA-1 matches the one the Maps API key is registered against. Swap in a real upload keystore in `app/build.gradle.kts` before any Play Store release.
 
-Install on a device: `adb install app-release.apk`.
+Install the **phone** app on a device: `adb install app-release.apk`. This is all you need to test the phone UI.
 
-**Testing the projected car experience on a real Android Auto head unit:** enable Android Auto **Developer settings** (tap the version number ~10× in Android Auto settings) and turn on **"Unknown sources"** — a sideloaded build won't otherwise appear on the head unit. The phone screens work regardless.
+**Testing the projected car (Android Auto) experience:** a sideloaded Car App Library app **cannot** run on a real car head unit — Android Auto's "Unknown sources" setting does not apply to template apps; that's a platform restriction, not a config you can toggle around. Test it with the **Desktop Head Unit (DHU)** instead:
+
+1. Install the phone app, and in Android Auto settings enable Developer settings (tap the version ~10×) + "Unknown sources", then tap **"Start head unit server"**.
+2. Connect the phone to your computer (USB debugging on) and run:
+   ```bash
+   adb forward tcp:5277 tcp:5277
+   "$ANDROID_HOME/extras/google/auto/desktop-head-unit"   # desktop-head-unit.exe on Windows
+   ```
+3. The app appears in the DHU's app launcher.
+
+To run on an actual car head unit, the app must be published to a Google Play track and pass the Android Auto app-quality review.
 
 ## Architecture
 
