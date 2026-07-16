@@ -56,6 +56,17 @@ class StationDetailScreen(
             }
         }
 
+        // Fair Use Policy: data attribution must appear on price views. This used to live on the
+        // separate "Data & Reporting" screen alongside a discrepancy-report web link — but AAOS
+        // blocks car apps from opening web links, so that screen was removed; the required
+        // attribution is inlined here instead.
+        paneBuilder.addRow(
+            Row.Builder()
+                .setTitle("Data source")
+                .addText("UK Government Fuel Finder scheme (Open Government Licence). Shown unmodified.")
+                .build()
+        )
+
         paneBuilder.addAction(
             Action.Builder()
                 .setTitle("Navigate")
@@ -69,12 +80,6 @@ class StationDetailScreen(
                 Header.Builder()
                     .setTitle(station.brand?.takeIf { it.isNotBlank() } ?: station.name)
                     .setStartHeaderAction(Action.BACK)
-                    .addEndHeaderAction(
-                        Action.Builder()
-                            .setTitle("Data & Reporting")
-                            .setOnClickListener { screenManager.push(DataNoticeScreen(carContext)) }
-                            .build()
-                    )
                     .build()
             )
             .build()
