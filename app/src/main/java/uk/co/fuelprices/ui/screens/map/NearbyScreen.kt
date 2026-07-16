@@ -1,7 +1,5 @@
 package uk.co.fuelprices.ui.screens.map
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -13,13 +11,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -36,7 +33,6 @@ fun NearbyScreen(
     viewModel: NearbyViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    val context = LocalContext.current
     // Plain boolean instead of a draggable BottomSheetScaffold: a real bottom sheet's drag
     // gestures can land in intermediate anchor states (partially expanded at a "peek" height)
     // that don't cleanly map to a simple open/closed toggle button. This panel is fully
@@ -44,6 +40,11 @@ fun NearbyScreen(
     var showPanel by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
+        // No bottomBar here (the tab bar lives in the outer Scaffold in Navigation.kt), but
+        // Scaffold reserves bottom system-bar inset space in innerPadding regardless of whether
+        // a bottomBar is actually declared — stacking with the outer Scaffold's own bottom
+        // padding and leaving a gap. Same root cause as the earlier top-bar gap fix, mirrored.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = { Text("Fuel Prices") },
@@ -57,21 +58,15 @@ fun NearbyScreen(
                         )
                     }
                     IconButton(onClick = {
-                        if (showPanel) viewModel.setSearchQuery("")
+                        // Only clear (and thus re-fetch) if there was actually a search in
+                        // progress — closing an empty search panel shouldn't re-fetch anything.
+                        if (showPanel && state.searchQuery.isNotEmpty()) viewModel.setSearchQuery("")
                         showPanel = !showPanel
                     }) {
                         Icon(
                             if (showPanel) Icons.Default.Clear else Icons.Default.Search,
                             contentDescription = if (showPanel) "Close" else "Search",
                         )
-                    }
-                    IconButton(onClick = {
-                        val url = state.discrepancyReportUrl.ifBlank {
-                            "https://www.fuel-finder.service.gov.uk/report-discrepancy"
-                        }
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                    }) {
-                        Icon(Icons.Default.Warning, contentDescription = "Report price discrepancy")
                     }
                 }
             )
@@ -89,18 +84,47 @@ fun NearbyScreen(
                         title = station.name,
                         snippet = cheapestPrice?.let { "%.1fp".format(it.pricePence) } ?: "No price",
                         id = station.id,
+                        color = FuelTypes.color(state.selectedFuelType),
                     )
                 }
             } else emptyList()
 
-            FuelMapView(
-                modifier = Modifier.fillMaxSize(),
-                centerLat = state.userLat ?: 51.5,
-                centerLng = state.userLng ?: -0.13,
-                zoomLevel = 12f,
-                markers = mapMarkers,
-                onMarkerClick = onStationClick,
-            )
+            // Don't render the map until a location is resolved — showing it centered on a
+            // hardcoded fallback first, then jumping once the real one arrives, reads as a flash.
+            val userLat = state.userLat
+            val userLng = state.userLng
+            if (userLat != null && userLng != null) {
+                FuelMapView(
+                    modifier = Modifier.fillMaxSize(),
+                    centerLat = userLat,
+                    centerLng = userLng,
+                    zoomLevel = 12f,
+                    markers = mapMarkers,
+                    onMarkerClick = onStationClick,
+                )
+            } else {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            }
+
+            // Currently filtered fuel type, always visible regardless of panel state.
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp),
+                shape = RoundedCornerShape(50),
+                color = FuelTypes.color(state.selectedFuelType),
+                shadowElevation = 4.dp,
+            ) {
+                Text(
+                    fuelLabel(state.selectedFuelType),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
 
             if (showPanel) {
                 Surface(
@@ -166,6 +190,10 @@ fun NearbyScreen(
                                     selected = state.selectedFuelType == type,
                                     onClick = { viewModel.setFuelType(type) },
                                     label = { Text(fuelLabel(type)) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = FuelTypes.color(type),
+                                        selectedLabelColor = Color.White,
+                                    ),
                                 )
                             }
                         }
@@ -236,7 +264,7 @@ private fun StationRow(station: StationDto, fuelType: String, onClick: () -> Uni
                     "%.1fp".format(price.pricePence),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = FuelTypes.color(fuelType),
                 )
             }
         },

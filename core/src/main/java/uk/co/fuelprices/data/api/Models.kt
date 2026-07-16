@@ -33,13 +33,15 @@ object FuelTypes {
         "HVO" to "HVO Diesel",
     )
 
+    // Loosely follows real UK fuel pump nozzle colour conventions (green = unleaded,
+    // black = diesel) so the in-app colour coding matches what's printed on the pump.
     val COLORS = mapOf(
-        "E10" to Color(0xFF22C55E),       // green
-        "E5" to Color(0xFF3B82F6),        // blue
-        "B7_STANDARD" to Color(0xFFF59E0B), // amber
-        "B7_PREMIUM" to Color(0xFFEF4444),  // red
-        "B10" to Color(0xFFA855F7),       // purple
-        "HVO" to Color(0xFF14B8A6),       // teal
+        "E10" to Color(0xFF22C55E),         // green — unleaded
+        "E5" to Color(0xFF3B82F6),          // blue — super unleaded
+        "B7_STANDARD" to Color(0xFF111827), // near-black — diesel
+        "B7_PREMIUM" to Color(0xFF4B5563),  // dark grey — premium/super diesel
+        "B10" to Color(0xFFA855F7),         // purple — biodiesel
+        "HVO" to Color(0xFF14B8A6),         // teal — HVO
     )
 
     fun shortLabel(code: String) = SHORT_LABELS[code] ?: code

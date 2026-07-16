@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -47,6 +48,10 @@ fun PreferencesScreen(
                                 else FuelTypes.shortLabel(type)
                             )
                         },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = FuelTypes.color(type),
+                            selectedLabelColor = Color.White,
+                        ),
                     )
                 }
             }
@@ -106,15 +111,8 @@ fun PreferencesScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            Spacer(Modifier.height(8.dp))
-
-            Button(
-                onClick = { viewModel.save() },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Save")
-            }
-
+            // Preferences save automatically as they're changed (see PreferencesViewModel) — this
+            // is just a transient confirmation, not a trigger.
             if (state.justSaved) {
                 Text(
                     "Saved",

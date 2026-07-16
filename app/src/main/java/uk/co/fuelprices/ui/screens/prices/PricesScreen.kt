@@ -171,12 +171,12 @@ fun PricesScreen(
             Spacer(Modifier.height(16.dp))
             HorizontalDivider()
 
-            // Compliance
+            // Compliance. Note: the backend's own discrepancyReportUrl value is the same
+            // /report-discrepancy path that 404s (confirmed directly) — using the working base
+            // domain instead until there's a real report page to link to.
             TextButton(
                 onClick = {
-                    val url = state.discrepancyReportUrl.ifBlank {
-                        "https://www.fuel-finder.service.gov.uk/report-discrepancy"
-                    }
+                    val url = "https://www.fuel-finder.service.gov.uk/"
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 },
                 modifier = Modifier.padding(16.dp),

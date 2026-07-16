@@ -1,12 +1,21 @@
 package uk.co.fuelprices.ui.components
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
 
@@ -16,6 +25,7 @@ data class MapMarker(
     val title: String,
     val snippet: String? = null,
     val id: Int? = null,
+    val color: Color? = null,
 )
 
 /** Google Maps Compose wrapper. Requires MAPS_API_KEY set in local.properties. */
@@ -41,10 +51,13 @@ fun FuelMapView(
         cameraPositionState = cameraPositionState,
     ) {
         markers.forEach { m ->
-            Marker(
+            // Rendered as a small price chip instead of a default pin, so the price is visible
+            // directly on the map without needing to tap through to an info window.
+            MarkerComposable(
+                m.id ?: -1,
+                m.snippet ?: "",
                 state = MarkerState(position = LatLng(m.lat, m.lng)),
                 title = m.title,
-                snippet = m.snippet,
                 onClick = {
                     if (onMarkerClick != null && m.id != null) {
                         onMarkerClick(m.id)
@@ -53,7 +66,22 @@ fun FuelMapView(
                         false
                     }
                 },
-            )
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = m.color ?: MaterialTheme.colorScheme.primary,
+                    border = BorderStroke(1.dp, Color.White),
+                    shadowElevation = 3.dp,
+                ) {
+                    Text(
+                        m.snippet ?: "?",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                    )
+                }
+            }
         }
     }
 }

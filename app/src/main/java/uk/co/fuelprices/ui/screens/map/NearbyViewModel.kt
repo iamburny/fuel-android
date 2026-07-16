@@ -8,9 +8,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import uk.co.fuelprices.data.api.StationDto
 import uk.co.fuelprices.data.repository.FuelRepository
+import uk.co.fuelprices.data.repository.UserPreferencesStore
 import uk.co.fuelprices.util.LocationHelper
 import javax.inject.Inject
 
@@ -33,6 +36,7 @@ data class NearbyUiState(
 class NearbyViewModel @Inject constructor(
     private val repo: FuelRepository,
     private val locationHelper: LocationHelper,
+    private val preferencesStore: UserPreferencesStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(NearbyUiState())
@@ -41,13 +45,23 @@ class NearbyViewModel @Inject constructor(
     private var searchJob: Job? = null
 
     init {
-        loadNearby()
-        // The loadNearby() above fires immediately on ViewModel creation, which is often before
-        // the user has answered the runtime location permission dialog (that request is launched
-        // async from MainActivity, so it races). MainActivity notifies this the moment a result
-        // is known, which is deterministic — unlike lifecycle resume timing around the dialog,
-        // which doesn't reliably re-fire on every device/API level.
         viewModelScope.launch {
+            // Start from the user's saved "usual fuel" preference rather than always defaulting
+            // to E10.
+            _state.value = _state.value.copy(selectedFuelType = preferencesStore.get().fuelType)
+
+            // Give the permission dialog a brief window to be answered before firing the first
+            // request — otherwise we load London (the fallback), render it, then immediately
+            // correct to the real location once permission lands, which reads as a jarring
+            // flash. If permission's already granted (the common case for returning users) this
+            // returns instantly. Capped at 3s so a slow response doesn't stall the screen.
+            if (!locationHelper.hasPermission()) {
+                withTimeoutOrNull(3_000) { locationHelper.permissionGranted.first() }
+            }
+            loadNearby()
+
+            // Keep listening in case permission lands after our short wait above (e.g. the
+            // dialog took longer than 3s to answer, or it's granted later via Settings).
             locationHelper.permissionGranted.collect {
                 loadNearby()
             }
@@ -62,11 +76,10 @@ class NearbyViewModel @Inject constructor(
                 val lat = location?.latitude ?: 51.5074  // default: London
                 val lng = location?.longitude ?: -0.1278
 
-                val response = repo.getNearbyStations(
-                    lat, lng,
-                    _state.value.radiusMiles,
-                    _state.value.selectedFuelType,
-                )
+                // No fuelType here — the repository always caches full price data per station
+                // now (see FuelRepository), so switching the fuel filter chip doesn't need a
+                // new fetch, just a client-side re-filter for display.
+                val response = repo.getNearbyStations(lat, lng, _state.value.radiusMiles)
 
                 _state.value = _state.value.copy(
                     isLoading = false,
@@ -82,7 +95,12 @@ class NearbyViewModel @Inject constructor(
 
     fun setFuelType(type: String) {
         _state.value = _state.value.copy(selectedFuelType = type)
-        reload()
+        // Nearby mode already has every fuel type's prices cached/loaded — just re-filter for
+        // display. Cheapest mode ranks server-side per fuel type, so that genuinely needs a
+        // fresh request.
+        if (_state.value.mode == ListMode.CHEAPEST) {
+            reload()
+        }
     }
 
     fun setRadius(miles: Double) {

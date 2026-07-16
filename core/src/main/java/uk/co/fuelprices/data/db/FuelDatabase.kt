@@ -51,6 +51,21 @@ interface StationDao {
     @Query("SELECT * FROM stations ORDER BY name ASC LIMIT :limit")
     suspend fun getAllStations(limit: Int = 100): List<StationWithPrices>
 
+    /** Cached stations within a bounding box, refreshed within the freshness window. */
+    @Transaction
+    @Query("""
+        SELECT * FROM stations
+        WHERE latitude BETWEEN :minLat AND :maxLat
+          AND longitude BETWEEN :minLng AND :maxLng
+          AND lastFetchedAt >= :freshAfter
+        ORDER BY name ASC
+        LIMIT :limit
+    """)
+    suspend fun getFreshStationsNear(
+        minLat: Double, maxLat: Double, minLng: Double, maxLng: Double,
+        freshAfter: Long, limit: Int = 100,
+    ): List<StationWithPrices>
+
     @Transaction
     @Query("SELECT * FROM stations WHERE id = :id")
     suspend fun getStationById(id: Int): StationWithPrices?

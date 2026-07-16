@@ -287,10 +287,13 @@ fun DetailScreen(
 
             HorizontalDivider()
 
-            // Compliance: discrepancy report link (required by Fair Use Policy)
+            // Compliance: discrepancy report link (required by Fair Use Policy).
+            // The specific /report-discrepancy path 404s (confirmed both here and as the
+            // backend's own configured default) — points at the working base domain until
+            // there's a real report page to link to.
             TextButton(
                 onClick = {
-                    val url = "https://www.fuel-finder.service.gov.uk/report-discrepancy"
+                    val url = "https://www.fuel-finder.service.gov.uk/"
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 },
                 modifier = Modifier.padding(16.dp),
