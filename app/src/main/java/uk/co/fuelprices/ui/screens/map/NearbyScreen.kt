@@ -140,12 +140,13 @@ fun NearbyScreen(
 
             // Shown only once the user has dragged away from their GPS location — auto-recenter
             // on filter/radius/mode changes was removed so it doesn't fight the drag, so a manual
-            // way back is needed (standard Google Maps convention).
+            // way back is needed (standard Google Maps convention). BottomStart (not BottomEnd) —
+            // the map's own zoom controls already occupy the bottom-right corner.
             if (state.isOffGpsCenter) {
                 SmallFloatingActionButton(
                     onClick = { viewModel.recenterOnGps() },
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
+                        .align(Alignment.BottomStart)
                         .padding(16.dp),
                 ) {
                     Icon(Icons.Default.MyLocation, contentDescription = "Recenter on my location")
