@@ -37,6 +37,11 @@ android {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Signed with the debug keystore so the release APK is installable via sideload for
+            // on-device testing, and its cert SHA-1 matches the one the Maps API key is registered
+            // against (so the map still renders). MUST be swapped for a real upload/release key
+            // before any Play Store distribution.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
