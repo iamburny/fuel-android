@@ -10,6 +10,7 @@ import androidx.car.app.constraints.ConstraintManager
 import androidx.car.app.model.Action
 import androidx.car.app.model.ActionStrip
 import androidx.car.app.model.CarColor
+import androidx.car.app.model.CarIcon
 import androidx.car.app.model.CarLocation
 import androidx.car.app.model.Distance
 import androidx.car.app.model.DistanceSpan
@@ -22,8 +23,12 @@ import androidx.car.app.model.PlaceListMapTemplate
 import androidx.car.app.model.PlaceMarker
 import androidx.car.app.model.Row
 import androidx.car.app.model.Template
+import androidx.core.graphics.drawable.IconCompat
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.coroutineScope
 import kotlinx.coroutines.launch
+import uk.co.fuelprices.core.R
 import uk.co.fuelprices.data.api.FuelTypes
 import uk.co.fuelprices.data.api.NationalAverageDto
 import uk.co.fuelprices.data.api.StationDto
@@ -56,6 +61,7 @@ class NearbyStationsScreen(
     private var currentLocation: Location? = null
     private var preferences: UserPreferences = UserPreferences()
     private var averages: List<NationalAverageDto> = emptyList()
+    private var isFirstResume = true
 
     init {
         if (locationHelper.hasPermission()) {
@@ -63,6 +69,19 @@ class NearbyStationsScreen(
         } else {
             isLoading = false
         }
+
+        // Re-fetch (cache-first, so cheap) whenever we come back into view — e.g. returning from
+        // CarPreferencesScreen after changing "usual fuel" or "long fuel names" — so sorting and
+        // labels pick up the change without the user having to tap Refresh manually.
+        lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onResume(owner: LifecycleOwner) {
+                if (isFirstResume) {
+                    isFirstResume = false
+                    return
+                }
+                lifecycle.coroutineScope.launch { refresh() }
+            }
+        })
     }
 
     private suspend fun refresh() {
@@ -146,14 +165,20 @@ class NearbyStationsScreen(
                 ActionStrip.Builder()
                     .addAction(
                         Action.Builder()
-                            .setTitle("Refresh")
+                            .setIcon(
+                                CarIcon.Builder(
+                                    IconCompat.createWithResource(carContext, R.drawable.ic_refresh)
+                                ).build()
+                            )
                             .setOnClickListener { lifecycle.coroutineScope.launch { refresh() } }
                             .build()
                     )
                     .addAction(
                         Action.Builder()
-                            .setTitle("Data & Reporting")
-                            .setOnClickListener { screenManager.push(DataNoticeScreen(carContext)) }
+                            .setTitle("Preferences")
+                            .setOnClickListener {
+                                screenManager.push(CarPreferencesScreen(carContext, preferencesStore))
+                            }
                             .build()
                     )
                     .build()
@@ -190,8 +215,12 @@ class NearbyStationsScreen(
     }
 
     private fun buildStationRow(station: StationDto): Row {
-        val cheapest = station.prices.minByOrNull { it.pricePence }
-        val priceText = cheapest?.let {
+        // Show the user's chosen "usual fuel" price, not just whatever's cheapest at this
+        // station — falls back to the station's cheapest reported price if it doesn't sell the
+        // preferred fuel type at all.
+        val displayPrice = station.prices.firstOrNull { it.fuelType == preferences.fuelType }
+            ?: station.prices.minByOrNull { it.pricePence }
+        val priceText = displayPrice?.let {
             val label = if (preferences.useLongFuelNames) FuelTypes.longLabel(it.fuelType) else FuelTypes.shortLabel(it.fuelType)
             "$label: %.1fp".format(it.pricePence)
         } ?: "No price reported"
@@ -224,7 +253,7 @@ class NearbyStationsScreen(
         // so no room for a decimal) instead of the host's default sequence-number labelling, and
         // colour the pin by fuel type — the car equivalent of the phone's price-chip map pins.
         val markerBuilder = PlaceMarker.Builder()
-        cheapest?.let { price ->
+        displayPrice?.let { price ->
             markerBuilder.setColor(fuelCarColor(price.fuelType))
             markerBuilder.setLabel(price.pricePence.roundToInt().coerceIn(0, 999).toString())
         }
