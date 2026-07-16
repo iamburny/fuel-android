@@ -105,8 +105,10 @@ class NearbyStationsScreen(
                 lng = location.longitude,
                 radiusMiles = RADIUS_MILES,
             )
+            // Unconditional — StationDetailScreen shows a vs-national-average delta regardless
+            // of whether MPG/tank prefs are set, not just when they're used for savings-sorting.
+            averages = try { repository.getNationalAverages().averages } catch (e: Exception) { emptyList() }
             stations = if (preferences.canEstimateDriveCost) {
-                averages = repository.getNationalAverages().averages
                 response.stations.sortedByDescending { station ->
                     estimateNetSavingsPounds(station, averages, preferences) ?: Double.NEGATIVE_INFINITY
                 }
@@ -262,7 +264,7 @@ class NearbyStationsScreen(
             .setTitle(station.brand?.takeIf { it.isNotBlank() } ?: station.name)
             .addText(description)
             .setOnClickListener {
-                screenManager.push(StationDetailScreen(carContext, station, preferences.useLongFuelNames))
+                screenManager.push(StationDetailScreen(carContext, station, preferences.useLongFuelNames, averages))
             }
             .setMetadata(
                 Metadata.Builder()

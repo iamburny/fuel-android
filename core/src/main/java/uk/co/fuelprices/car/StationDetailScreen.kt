@@ -14,6 +14,7 @@ import androidx.car.app.model.PaneTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.Template
 import uk.co.fuelprices.data.api.FuelTypes
+import uk.co.fuelprices.data.api.NationalAverageDto
 import uk.co.fuelprices.data.api.StationDto
 
 /** Android Auto detail screen for a single station: prices per fuel type + navigate action. */
@@ -21,6 +22,7 @@ class StationDetailScreen(
     carContext: CarContext,
     private val station: StationDto,
     private val useLongFuelNames: Boolean = true,
+    private val nationalAverages: List<NationalAverageDto> = emptyList(),
 ) : Screen(carContext) {
 
     override fun onGetTemplate(): Template {
@@ -43,12 +45,14 @@ class StationDetailScreen(
         } else {
             station.prices.sortedBy { it.pricePence }.forEach { price ->
                 val label = if (useLongFuelNames) FuelTypes.longLabel(price.fuelType) else FuelTypes.shortLabel(price.fuelType)
-                paneBuilder.addRow(
-                    Row.Builder()
-                        .setTitle(label)
-                        .addText("%.1fp".format(price.pricePence))
-                        .build()
-                )
+                val rowBuilder = Row.Builder()
+                    .setTitle(label)
+                    .addText("%.1fp".format(price.pricePence))
+                val avgPence = nationalAverages.firstOrNull { it.fuelType == price.fuelType }?.avgPricePence
+                if (avgPence != null) {
+                    rowBuilder.addText("%+.1fp vs national avg".format(price.pricePence - avgPence))
+                }
+                paneBuilder.addRow(rowBuilder.build())
             }
         }
 
