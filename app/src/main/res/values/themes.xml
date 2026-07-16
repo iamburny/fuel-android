@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Material3.DayNight.NoActionBar" parent="Theme.Material3.DayNight.NoActionBar">
+    <!-- This app has no XML Material Components/AppCompat dependency (Compose-only, themed via
+         Compose Material3 at the Kotlin level) — the manifest theme just needs a platform base
+         for the launch window before Compose content sets in. -->
+    <style name="Theme.FuelPrices" parent="android:Theme.Material.Light.NoActionBar">
     </style>
 </resources>

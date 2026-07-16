@@ -13,7 +13,7 @@
         android:icon="@mipmap/ic_launcher"
         android:label="Fuel Prices UK"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Material3.DayNight.NoActionBar">
+        android:theme="@style/Theme.FuelPrices">
 
         <!-- From MAPS_API_KEY in local.properties (not checked into version control) -->
         <meta-data

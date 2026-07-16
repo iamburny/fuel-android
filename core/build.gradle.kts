@@ -25,7 +25,7 @@ android {
 
     buildTypes {
         release {
-            buildConfigField("String", "API_BASE_URL", "\"https://your-prod-api.example.com\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://api.fueltracker.uk\"")
         }
     }
 
