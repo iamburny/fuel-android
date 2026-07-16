@@ -10,7 +10,9 @@ import androidx.car.app.model.LongMessageTemplate
 import androidx.car.app.model.ParkedOnlyOnClickListener
 import androidx.car.app.model.Template
 
-private const val DISCREPANCY_REPORT_URL = "https://www.fuel-finder.service.gov.uk/report-discrepancy"
+// The specific report-discrepancy path 404s (confirmed via curl) — same issue fixed on the phone
+// app's Detail/Prices screens. Points at the working base domain until the real report URL is known.
+private const val DISCREPANCY_REPORT_URL = "https://www.fuel-finder.service.gov.uk/"
 
 /**
  * Fair Use Policy compliance: data attribution notice and discrepancy report link.

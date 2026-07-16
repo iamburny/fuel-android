@@ -20,6 +20,7 @@ import uk.co.fuelprices.data.api.StationDto
 class StationDetailScreen(
     carContext: CarContext,
     private val station: StationDto,
+    private val useLongFuelNames: Boolean = true,
 ) : Screen(carContext) {
 
     override fun onGetTemplate(): Template {
@@ -41,9 +42,10 @@ class StationDetailScreen(
             paneBuilder.addRow(Row.Builder().setTitle("No prices reported").build())
         } else {
             station.prices.sortedBy { it.pricePence }.forEach { price ->
+                val label = if (useLongFuelNames) FuelTypes.longLabel(price.fuelType) else FuelTypes.shortLabel(price.fuelType)
                 paneBuilder.addRow(
                     Row.Builder()
-                        .setTitle(FuelTypes.longLabel(price.fuelType))
+                        .setTitle(label)
                         .addText("%.1fp".format(price.pricePence))
                         .build()
                 )

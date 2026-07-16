@@ -33,6 +33,7 @@ import uk.co.fuelprices.data.repository.UserPreferencesStore
 import uk.co.fuelprices.util.LocationHelper
 import uk.co.fuelprices.util.estimateNetSavingsPounds
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 private const val RADIUS_MILES = 15.0
 private const val FALLBACK_MAX_ROWS = 6
@@ -191,7 +192,8 @@ class NearbyStationsScreen(
     private fun buildStationRow(station: StationDto): Row {
         val cheapest = station.prices.minByOrNull { it.pricePence }
         val priceText = cheapest?.let {
-            "${FuelTypes.shortLabel(it.fuelType)}: %.1fp".format(it.pricePence)
+            val label = if (preferences.useLongFuelNames) FuelTypes.longLabel(it.fuelType) else FuelTypes.shortLabel(it.fuelType)
+            "$label: %.1fp".format(it.pricePence)
         } ?: "No price reported"
 
         val netSavings = if (preferences.canEstimateDriveCost) {
@@ -218,17 +220,26 @@ class NearbyStationsScreen(
             longitude = station.longitude
         }
 
+        // Show the whole-pence price directly on the pin (PlaceMarker labels cap at 3 characters,
+        // so no room for a decimal) instead of the host's default sequence-number labelling, and
+        // colour the pin by fuel type — the car equivalent of the phone's price-chip map pins.
+        val markerBuilder = PlaceMarker.Builder()
+        cheapest?.let { price ->
+            markerBuilder.setColor(fuelCarColor(price.fuelType))
+            markerBuilder.setLabel(price.pricePence.roundToInt().coerceIn(0, 999).toString())
+        }
+
         return Row.Builder()
             .setTitle(station.brand?.takeIf { it.isNotBlank() } ?: station.name)
             .addText(description)
             .setOnClickListener {
-                screenManager.push(StationDetailScreen(carContext, station))
+                screenManager.push(StationDetailScreen(carContext, station, preferences.useLongFuelNames))
             }
             .setMetadata(
                 Metadata.Builder()
                     .setPlace(
                         Place.Builder(CarLocation.create(location))
-                            .setMarker(PlaceMarker.Builder().build())
+                            .setMarker(markerBuilder.build())
                             .build()
                     )
                     .build()
