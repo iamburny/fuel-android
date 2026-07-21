@@ -1,4 +1,4 @@
-# Fuel Prices UK — Android App
+# Fuel Tracker UK — Android App
 
 Native Kotlin Android app for viewing UK fuel prices from the Government Fuel Finder scheme.
 

@@ -20,7 +20,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "uk.co.fuelprices"
+        applicationId = "uk.fueltracker.app"
         minSdk = 29
         targetSdk = 35
         versionCode = 1

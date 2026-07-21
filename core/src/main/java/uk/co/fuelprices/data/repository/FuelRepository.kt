@@ -1,5 +1,10 @@
 package uk.co.fuelprices.data.repository
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import uk.co.fuelprices.data.api.*
 import uk.co.fuelprices.data.db.*
 import uk.co.fuelprices.util.haversineMiles
@@ -18,6 +23,23 @@ class FuelRepository @Inject constructor(
 ) {
     private val dao = db.stationDao()
 
+    // Mirrors the DI Retrofit Json config — used to round-trip the complex station fields
+    // (amenities, opening hours) through their JSON-string cache columns.
+    private val json = Json {
+        ignoreUnknownKeys = true
+        coerceInputValues = true
+    }
+
+    // Consecutive network failures on the station data path — bumped when a fetch falls back to
+    // cache because the network was unreachable, reset to 0 on any successful call. The UI watches
+    // this to surface a graceful "can't reach the server" banner once it crosses a threshold,
+    // rather than silently showing an empty/stale list.
+    private val _apiFailureCount = MutableStateFlow(0)
+    val apiFailureCount: StateFlow<Int> = _apiFailureCount.asStateFlow()
+
+    private fun recordApiSuccess() { _apiFailureCount.value = 0 }
+    private fun recordApiFailure() { _apiFailureCount.value += 1 }
+
     // ── Stations ─────────────────────────────────────────
 
     /**
@@ -29,10 +51,16 @@ class FuelRepository @Inject constructor(
     suspend fun getNearbyStations(
         lat: Double, lng: Double,
         radiusMiles: Double = 10.0,
+        forceRefresh: Boolean = false,
     ): StationListResponse {
-        val cached = getFreshCachedStationsNear(lat, lng, radiusMiles)
-        if (cached.isNotEmpty()) {
-            return StationListResponse(count = cached.size, stations = cached)
+        // forceRefresh (the manual pull-to-refresh) skips the cache entirely and goes straight to
+        // the network, so the user always gets live prices on demand — automatic loads stay
+        // cache-first below.
+        if (!forceRefresh) {
+            val cached = getFreshCachedStationsNear(lat, lng, radiusMiles)
+            if (cached.isNotEmpty()) {
+                return StationListResponse(count = cached.size, stations = cached)
+            }
         }
 
         return try {
@@ -40,9 +68,11 @@ class FuelRepository @Inject constructor(
             // type when one's given, which would make the cache incomplete for every other
             // fuel type filter. Fetching everything once lets the cache serve all of them.
             val response = api.getNearbyStations(lat, lng, radiusMiles)
+            recordApiSuccess()
             cacheStations(response.stations)
             response
         } catch (e: Exception) {
+            recordApiFailure()
             // Network failed and the cache had nothing fresh for this area — fall back to
             // whatever's cached regardless of age, better than nothing.
             val stale = dao.getAllStations().map { it.toDto(lat, lng) }
@@ -59,19 +89,24 @@ class FuelRepository @Inject constructor(
      */
     suspend fun getStationsInBounds(
         minLat: Double, maxLat: Double, minLng: Double, maxLng: Double,
+        forceRefresh: Boolean = false,
     ): StationListResponse {
         val freshAfter = System.currentTimeMillis() - CACHE_TTL_MILLIS
-        val cached = dao.getFreshStationsNear(minLat, maxLat, minLng, maxLng, freshAfter)
-            .map { it.toDto(originLat = null, originLng = null) }
-        if (cached.isNotEmpty()) {
-            return StationListResponse(count = cached.size, stations = cached)
+        if (!forceRefresh) {
+            val cached = dao.getFreshStationsNear(minLat, maxLat, minLng, maxLng, freshAfter)
+                .map { it.toDto(originLat = null, originLng = null) }
+            if (cached.isNotEmpty()) {
+                return StationListResponse(count = cached.size, stations = cached)
+            }
         }
 
         return try {
             val response = api.getStationsInBounds(minLat, maxLat, minLng, maxLng)
+            recordApiSuccess()
             cacheStations(response.stations)
             response
         } catch (e: Exception) {
+            recordApiFailure()
             val stale = dao.getFreshStationsNear(minLat, maxLat, minLng, maxLng, freshAfter = 0L)
                 .map { it.toDto(originLat = null, originLng = null) }
             StationListResponse(count = stale.size, stations = stale)
@@ -163,9 +198,15 @@ class FuelRepository @Inject constructor(
             StationEntity(
                 id = it.id, govId = it.govId, name = it.name,
                 brand = it.brand, operator = it.operator,
-                addressLine1 = it.addressLine1, town = it.town,
-                postcode = it.postcode, latitude = it.latitude,
-                longitude = it.longitude, lastFetchedAt = now,
+                addressLine1 = it.addressLine1, addressLine2 = it.addressLine2,
+                town = it.town, county = it.county,
+                postcode = it.postcode, phone = it.phone,
+                latitude = it.latitude, longitude = it.longitude,
+                temporaryClosure = it.temporaryClosure,
+                isMotorway = it.isMotorway, isSupermarket = it.isSupermarket,
+                amenitiesJson = it.amenities?.let { a -> json.encodeToString(JsonElement.serializer(), a) },
+                openingHoursJson = it.openingHours?.let { oh -> json.encodeToString(OpeningHoursDto.serializer(), oh) },
+                lastFetchedAt = now,
             )
         })
         val prices = stations.flatMap { station ->
@@ -187,9 +228,14 @@ class FuelRepository @Inject constructor(
     private fun StationWithPrices.toDto(originLat: Double?, originLng: Double?) = StationDto(
         id = station.id, govId = station.govId, name = station.name,
         brand = station.brand, operator = station.operator,
-        addressLine1 = station.addressLine1, town = station.town,
-        postcode = station.postcode, latitude = station.latitude,
-        longitude = station.longitude,
+        addressLine1 = station.addressLine1, addressLine2 = station.addressLine2,
+        town = station.town, county = station.county,
+        postcode = station.postcode, phone = station.phone,
+        latitude = station.latitude, longitude = station.longitude,
+        temporaryClosure = station.temporaryClosure,
+        isMotorway = station.isMotorway, isSupermarket = station.isSupermarket,
+        amenities = station.amenitiesJson?.let { json.decodeFromString(JsonElement.serializer(), it) },
+        openingHours = station.openingHoursJson?.let { json.decodeFromString(OpeningHoursDto.serializer(), it) },
         distanceMiles = if (originLat != null && originLng != null) {
             haversineMiles(originLat, originLng, station.latitude, station.longitude)
         } else null,

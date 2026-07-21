@@ -48,11 +48,23 @@ private val bottomNavItems = listOf(
 @Composable
 fun FuelApp(
     appPreferencesViewModel: AppPreferencesViewModel = hiltViewModel(),
+    // Set when launched from a price-drop notification tap — navigates straight to that station's
+    // Detail once, then calls onStartStationHandled so a config change / recomposition doesn't
+    // re-navigate.
+    startStationId: Int? = null,
+    onStartStationHandled: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val useLongFuelNames by appPreferencesViewModel.useLongFuelNames.collectAsState()
+
+    LaunchedEffect(startStationId) {
+        startStationId?.let { id ->
+            navController.navigate(Screen.Detail.createRoute(id))
+            onStartStationHandled()
+        }
+    }
 
     // Hide bottom bar on detail screen
     val showBottomBar = currentRoute != Screen.Detail.route

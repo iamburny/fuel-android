@@ -9,8 +9,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import uk.co.fuelprices.data.api.FuelTypes
 import uk.co.fuelprices.data.api.StationDto
+import uk.co.fuelprices.ui.components.BrandTitle
 import uk.co.fuelprices.ui.components.FuelMapView
 import uk.co.fuelprices.ui.components.MapMarker
 import uk.co.fuelprices.ui.theme.fuelLabel
@@ -48,15 +51,20 @@ fun NearbyScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text("Fuel Prices") },
+                title = { BrandTitle() },
                 actions = {
-                    if (state.isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .padding(horizontal = 4.dp),
-                            strokeWidth = 2.dp,
-                        )
+                    // One control: the refresh button turns into a spinner while a load is in
+                    // flight (and is disabled so it can't fire a duplicate request), then reverts
+                    // to the refresh icon.
+                    IconButton(onClick = { viewModel.refresh() }, enabled = !state.isLoading) {
+                        if (state.isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        }
                     }
                     IconButton(onClick = {
                         // Only clear (and thus re-fetch) if there was actually a search in
@@ -107,6 +115,7 @@ fun NearbyScreen(
                     onMarkerClick = onStationClick,
                     recenterKey = state.cameraRecenterToken,
                     onCameraIdle = { bounds -> viewModel.loadStationsInBounds(bounds) },
+                    showMyLocation = true,
                 )
             } else {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -150,6 +159,53 @@ fun NearbyScreen(
                         .padding(16.dp),
                 ) {
                     Icon(Icons.Default.MyLocation, contentDescription = "Recenter on my location")
+                }
+            }
+
+            // Graceful connectivity notice: after repeated back-to-back connection failures the
+            // map has no fresh prices to show, so rather than leave it silently empty we surface a
+            // dismissible banner with a Retry. Sits below the fuel-type pill so the two don't
+            // overlap. Clears automatically once a fetch succeeds (state.apiUnreachable flips).
+            if (state.apiUnreachable) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 64.dp, start = 12.dp, end = 12.dp)
+                        .fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shadowElevation = 4.dp,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.CloudOff,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 12.dp),
+                        ) {
+                            Text(
+                                "Can't reach the fuel price service",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                            Text(
+                                "Check your connection — showing saved prices where available.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                        }
+                        TextButton(onClick = { viewModel.refresh() }) {
+                            Text("Retry")
+                        }
+                    }
                 }
             }
 

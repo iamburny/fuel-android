@@ -16,6 +16,7 @@ import uk.co.fuelprices.data.api.StationDto
 import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferencesStore
 import uk.co.fuelprices.util.LocationHelper
+import uk.co.fuelprices.util.haversineMiles
 import javax.inject.Inject
 
 enum class ListMode { NEARBY, CHEAPEST }
@@ -40,6 +41,9 @@ data class NearbyUiState(
     val cameraRecenterToken: Int = 0,
     // True once the user has dragged the map away from GPS-center — shows a recenter button.
     val isOffGpsCenter: Boolean = false,
+    // True after repeated back-to-back connection failures — drives a graceful "can't reach the
+    // server" banner. Clears automatically on the next successful fetch.
+    val apiUnreachable: Boolean = false,
 )
 
 @HiltViewModel
@@ -54,8 +58,21 @@ class NearbyViewModel @Inject constructor(
 
     private var searchJob: Job? = null
     private var boundsJob: Job? = null
+    private var locationJob: Job? = null
+
+    // Surface the "can't reach the server" banner once at least this many station fetches have
+    // failed back-to-back — one transient blip shouldn't nag the user.
+    private val failureThreshold = 2
 
     init {
+        // Watch the repository's connection health independently of any single load, so the banner
+        // appears/clears no matter which fetch (initial, refresh, drag) tripped it.
+        viewModelScope.launch {
+            repo.apiFailureCount.collect { count ->
+                _state.value = _state.value.copy(apiUnreachable = count >= failureThreshold)
+            }
+        }
+
         viewModelScope.launch {
             // Start from the user's saved "usual fuel" preference rather than always defaulting
             // to E10.
@@ -70,16 +87,55 @@ class NearbyViewModel @Inject constructor(
                 withTimeoutOrNull(3_000) { locationHelper.permissionGranted.first() }
             }
             loadNearby()
+            startLocationUpdates()
 
             // Keep listening in case permission lands after our short wait above (e.g. the
             // dialog took longer than 3s to answer, or it's granted later via Settings).
             locationHelper.permissionGranted.collect {
                 loadNearby()
+                startLocationUpdates()
             }
         }
     }
 
-    fun loadNearby() {
+    /**
+     * Subscribes to continuous GPS fixes so the map tracks the user in real time. While the user
+     * hasn't dragged away from GPS-center ([NearbyUiState.isOffGpsCenter] is false), each new fix
+     * re-centers the camera by bumping [NearbyUiState.cameraRecenterToken]; once they've dragged,
+     * we still update the stored location (for the "my location" dot and distances) but leave the
+     * camera where they put it. Re-called on permission grant because [LocationHelper.locationUpdates]
+     * completes immediately when permission is absent.
+     */
+    private fun startLocationUpdates() {
+        locationJob?.cancel()
+        locationJob = viewModelScope.launch {
+            locationHelper.locationUpdates().collect { loc ->
+                val s = _state.value
+                val prevLat = s.userLat
+                val prevLng = s.userLng
+                // Ignore sub-30m jitter so the camera doesn't twitch while standing still.
+                val moved = prevLat == null || prevLng == null ||
+                    haversineMiles(prevLat, prevLng, loc.latitude, loc.longitude) > 0.02
+                if (!moved) return@collect
+                _state.value = s.copy(
+                    userLat = loc.latitude,
+                    userLng = loc.longitude,
+                    cameraRecenterToken = if (!s.isOffGpsCenter) {
+                        s.cameraRecenterToken + 1
+                    } else {
+                        s.cameraRecenterToken
+                    },
+                )
+            }
+        }
+    }
+
+    /** Manual refresh — re-acquires GPS and forces a live network reload, bypassing the cache. */
+    fun refresh() {
+        reload(forceRefresh = true)
+    }
+
+    fun loadNearby(forceRefresh: Boolean = false) {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
@@ -90,7 +146,7 @@ class NearbyViewModel @Inject constructor(
                 // No fuelType here — the repository always caches full price data per station
                 // now (see FuelRepository), so switching the fuel filter chip doesn't need a
                 // new fetch, just a client-side re-filter for display.
-                val response = repo.getNearbyStations(lat, lng, _state.value.radiusMiles)
+                val response = repo.getNearbyStations(lat, lng, _state.value.radiusMiles, forceRefresh)
 
                 // Only jump the camera to GPS the first time we get a real fix — subsequent
                 // reloads (radius/fuel/mode changes) shouldn't yank the map back if the user has
@@ -195,12 +251,13 @@ class NearbyViewModel @Inject constructor(
         }
     }
 
-    private fun reload() {
+    private fun reload(forceRefresh: Boolean = false) {
         val s = _state.value
         if (s.searchQuery.length >= 2) {
+            // Search and cheapest hit no local cache, so forceRefresh is a no-op for them.
             setSearchQuery(s.searchQuery)
         } else when (s.mode) {
-            ListMode.NEARBY -> loadNearby()
+            ListMode.NEARBY -> loadNearby(forceRefresh)
             ListMode.CHEAPEST -> loadCheapest()
         }
     }

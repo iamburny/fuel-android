@@ -20,6 +20,8 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.MapProperties
+import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
@@ -51,6 +53,10 @@ fun FuelMapView(
     // Fires once a drag ends, with the map's new visible bounds — used to load pins for whatever
     // area the user panned to. Not called for the initial camera placement, only genuine drags.
     onCameraIdle: ((LatLngBounds) -> Unit)? = null,
+    // Enables the Google Maps live "my location" blue dot. Requires location permission to be
+    // granted (the caller's responsibility). The SDK's own recenter button is hidden — callers
+    // that want one (Nearby) provide their own FAB. Left false for static maps (e.g. Detail).
+    showMyLocation: Boolean = false,
 ) {
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(LatLng(centerLat, centerLng), zoomLevel)
@@ -91,6 +97,8 @@ fun FuelMapView(
     GoogleMap(
         modifier = modifier,
         cameraPositionState = cameraPositionState,
+        properties = MapProperties(isMyLocationEnabled = showMyLocation),
+        uiSettings = MapUiSettings(myLocationButtonEnabled = false),
     ) {
         markers.forEach { m ->
             // Rendered as a small price chip instead of a default pin, so the price is visible

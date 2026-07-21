@@ -18,7 +18,7 @@
         android:name=".FuelAutomotiveApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="Fuel Prices UK"
+        android:label="Fuel Tracker UK"
         android:supportsRtl="true">
 
         <meta-data

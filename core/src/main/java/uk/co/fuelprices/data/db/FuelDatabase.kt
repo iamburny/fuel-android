@@ -12,10 +12,21 @@ data class StationEntity(
     val brand: String?,
     val operator: String?,
     val addressLine1: String?,
+    val addressLine2: String?,
     val town: String?,
+    val county: String?,
     val postcode: String?,
+    val phone: String?,
     val latitude: Double,
     val longitude: Double,
+    val temporaryClosure: Boolean = false,
+    val isMotorway: Boolean = false,
+    val isSupermarket: Boolean = false,
+    // Complex DTO fields stored as raw JSON strings so the entity stays primitive (no Room
+    // TypeConverters); the repository encodes/decodes them. amenities keeps its dual array/object
+    // shape because the original JSON is round-tripped verbatim.
+    val amenitiesJson: String?,
+    val openingHoursJson: String?,
     val lastFetchedAt: Long = System.currentTimeMillis(),
 )
 
@@ -94,7 +105,10 @@ interface StationDao {
 
 @Database(
     entities = [StationEntity::class, FuelPriceEntity::class],
-    version = 1,
+    // v2: StationEntity gained addressLine2/county/phone, the closure/motorway/supermarket flags,
+    // and JSON columns for amenities + opening hours. The cache is rebuildable, so the DI builder's
+    // fallbackToDestructiveMigration() handles the bump — no hand-written Migration needed.
+    version = 2,
     exportSchema = false,
 )
 abstract class FuelDatabase : RoomDatabase() {

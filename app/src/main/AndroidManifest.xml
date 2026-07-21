@@ -7,11 +7,15 @@
       FuelCarAppService <service> declaration are all merged in from :core's manifest.
     -->
 
+    <!-- Runtime-requested on Android 13+ (see MainActivity); needed to show price-drop alerts. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".FuelApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="Fuel Prices UK"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="Fuel Tracker UK"
         android:supportsRtl="true"
         android:theme="@style/Theme.FuelPrices">
 
@@ -27,6 +31,19 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+              Android App Links. autoVerify triggers Android to fetch
+              https://fueltracker.uk/.well-known/assetlinks.json and, if this app's
+              package + signing-cert SHA-256 match, open fueltracker.uk links directly
+              (no browser disambiguation, and no other app can claim the domain).
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="fueltracker.uk" />
             </intent-filter>
         </activity>
 

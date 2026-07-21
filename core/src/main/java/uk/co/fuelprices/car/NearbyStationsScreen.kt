@@ -152,7 +152,7 @@ class NearbyStationsScreen(
 
         val templateBuilder = PlaceListMapTemplate.Builder()
             .setItemList(itemListBuilder.build())
-            .setTitle("Nearby Fuel Prices")
+            .setTitle("Fuel Tracker UK")
             .setHeaderAction(Action.APP_ICON)
             .setCurrentLocationEnabled(true)
 
@@ -190,7 +190,7 @@ class NearbyStationsScreen(
 
     private fun buildPermissionPromptTemplate(): Template {
         return LongMessageTemplate.Builder(
-            "Fuel Prices UK needs location access to find nearby stations. " +
+            "Fuel Tracker UK needs location access to find nearby stations. " +
                 "Grant the permission below, or on your phone if prompted."
         )
             .setTitle("Location Access Needed")
