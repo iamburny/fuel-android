@@ -168,6 +168,18 @@ class FuelRepository @Inject constructor(
         }
     }
 
+    /** Exchange a Google ID token for the app JWT; [email] is stored for display (the backend
+     *  response carries only the token). */
+    suspend fun loginWithGoogle(idToken: String, email: String): TokenResponse {
+        try {
+            val response = api.googleLogin(GoogleLoginRequest(idToken))
+            tokenStore.saveToken(response.accessToken, email)
+            return response
+        } catch (e: retrofit2.HttpException) {
+            throw AuthException.from(e)
+        }
+    }
+
     /** Register this device's FCM token against the logged-in user (call after login). */
     suspend fun registerFcmToken(token: String) = api.updateFcmToken(token)
 

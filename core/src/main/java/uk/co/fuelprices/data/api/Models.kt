@@ -224,6 +224,9 @@ data class LoginRequest(val username: String, val password: String)
 data class RegisterRequest(val email: String, val password: String)
 
 @Serializable
+data class GoogleLoginRequest(@SerialName("id_token") val idToken: String)
+
+@Serializable
 data class TokenResponse(
     @SerialName("access_token") val accessToken: String,
     @SerialName("token_type") val tokenType: String = "bearer",

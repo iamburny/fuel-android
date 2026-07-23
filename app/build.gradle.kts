@@ -18,6 +18,9 @@ val mapsApiKey: String = localProperties.getProperty("MAPS_API_KEY") ?: ""
 // in Cloud Console). Falls back to the debug key if unset, so a release build still renders maps
 // locally when you haven't configured a release key.
 val mapsApiKeyRelease: String = localProperties.getProperty("MAPS_API_KEY_RELEASE") ?: mapsApiKey
+// The Google Web OAuth client ID, used as `serverClientId` for Credential Manager sign-in. Add
+// GOOGLE_WEB_CLIENT_ID=... to local.properties (gitignored). Empty until you create the OAuth client.
+val googleWebClientId: String = localProperties.getProperty("GOOGLE_WEB_CLIENT_ID") ?: ""
 
 // Upload/release signing — kept out of version control. Create keystore.properties (see
 // keystore.properties.example) with storeFile/storePassword/keyAlias/keyPassword. When absent
@@ -37,14 +40,16 @@ android {
         applicationId = "uk.fueltracker.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.1"
 
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     signingConfigs {
@@ -119,6 +124,11 @@ dependencies {
     // Firebase Cloud Messaging
     implementation(platform("com.google.firebase:firebase-bom:33.6.0"))
     implementation("com.google.firebase:firebase-messaging-ktx")
+
+    // Google Sign-In via Credential Manager (yields a Google ID token for the backend)
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
     // Android Auto phone projection (Car App Library)
     implementation("androidx.car.app:app-projected:1.7.0")

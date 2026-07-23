@@ -72,6 +72,9 @@ interface FuelPricesApi {
     @POST("api/auth/register")
     suspend fun register(@Body body: RegisterRequest): UserResponse
 
+    @POST("api/auth/google")
+    suspend fun googleLogin(@Body body: GoogleLoginRequest): TokenResponse
+
     @POST("api/auth/fcm-token")
     suspend fun updateFcmToken(@Query("fcm_token") token: String)
 

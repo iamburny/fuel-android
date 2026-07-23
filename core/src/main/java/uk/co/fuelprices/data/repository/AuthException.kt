@@ -7,7 +7,7 @@ import retrofit2.HttpException
  * Retrofit on its classpath to interpret HTTP status codes. [message] is safe to show directly.
  */
 class AuthException(val reason: Reason, message: String) : Exception(message) {
-    enum class Reason { INVALID_CREDENTIALS, EMAIL_TAKEN, OTHER }
+    enum class Reason { INVALID_CREDENTIALS, EMAIL_TAKEN, GOOGLE_SIGNIN_FAILED, OTHER }
 
     companion object {
         fun from(e: HttpException): AuthException = when (e.code()) {
