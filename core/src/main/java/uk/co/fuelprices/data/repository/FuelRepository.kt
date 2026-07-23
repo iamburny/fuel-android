@@ -151,13 +151,25 @@ class FuelRepository @Inject constructor(
     // ── Auth ─────────────────────────────────────────────
 
     suspend fun login(email: String, password: String): TokenResponse {
-        val response = api.login(email, password)
-        tokenStore.saveToken(response.accessToken, email)
-        return response
+        try {
+            val response = api.login(email, password)
+            tokenStore.saveToken(response.accessToken, email)
+            return response
+        } catch (e: retrofit2.HttpException) {
+            throw AuthException.from(e)
+        }
     }
 
-    suspend fun register(email: String, password: String): UserResponse =
-        api.register(RegisterRequest(email, password))
+    suspend fun register(email: String, password: String): UserResponse {
+        try {
+            return api.register(RegisterRequest(email, password))
+        } catch (e: retrofit2.HttpException) {
+            throw AuthException.from(e)
+        }
+    }
+
+    /** Register this device's FCM token against the logged-in user (call after login). */
+    suspend fun registerFcmToken(token: String) = api.updateFcmToken(token)
 
     suspend fun logout() = tokenStore.clear()
 
@@ -171,6 +183,20 @@ class FuelRepository @Inject constructor(
         api.addFavourite(FavouriteCreateRequest(stationId, fuelType))
 
     suspend fun removeFavourite(id: Int) = api.removeFavourite(id)
+
+    // ── Area alerts ───────────────────────────────────────
+
+    suspend fun getAlerts() = api.getAlerts()
+
+    suspend fun addAlert(
+        latitude: Double,
+        longitude: Double,
+        radiusMiles: Double = 10.0,
+        fuelType: String = "E10",
+        label: String? = null,
+    ) = api.addAlert(AlertCreateRequest(latitude, longitude, radiusMiles, fuelType, label))
+
+    suspend fun removeAlert(id: Int) = api.removeAlert(id)
 
     // ── Discrepancy ──────────────────────────────────────
 

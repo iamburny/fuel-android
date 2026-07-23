@@ -17,6 +17,7 @@ data class PreferencesUiState(
     val mpgText: String = "",
     val tankCapacityText: String = "",
     val useLongFuelNames: Boolean = false,
+    val themeMode: String = "SYSTEM",
     val justSaved: Boolean = false,
 )
 
@@ -38,6 +39,7 @@ class PreferencesViewModel @Inject constructor(
                 mpgText = prefs.mpg?.let { formatNumber(it) } ?: "",
                 tankCapacityText = prefs.tankCapacityLitres?.let { formatNumber(it) } ?: "",
                 useLongFuelNames = prefs.useLongFuelNames,
+                themeMode = prefs.themeMode,
             )
         }
     }
@@ -59,6 +61,11 @@ class PreferencesViewModel @Inject constructor(
 
     fun setUseLongFuelNames(useLong: Boolean) {
         _state.value = _state.value.copy(useLongFuelNames = useLong)
+        saveNow()
+    }
+
+    fun setThemeMode(mode: String) {
+        _state.value = _state.value.copy(themeMode = mode)
         saveNow()
     }
 
@@ -84,6 +91,7 @@ class PreferencesViewModel @Inject constructor(
             mpg = s.mpgText.toDoubleOrNull(),
             tankCapacityLitres = s.tankCapacityText.toDoubleOrNull(),
             useLongFuelNames = s.useLongFuelNames,
+            themeMode = s.themeMode,
         )
         _state.value = _state.value.copy(justSaved = true)
         delay(1_500)

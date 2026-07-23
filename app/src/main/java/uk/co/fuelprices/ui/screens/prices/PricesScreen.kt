@@ -22,6 +22,7 @@ import uk.co.fuelprices.data.api.FuelTypes
 import uk.co.fuelprices.data.api.NationalAverageDto
 import uk.co.fuelprices.data.api.TrendPoint
 import uk.co.fuelprices.ui.components.LineChart
+import uk.co.fuelprices.ui.theme.fuelColor
 import uk.co.fuelprices.ui.theme.fuelLabel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -130,7 +131,7 @@ fun PricesScreen(
             if (state.trend.isNotEmpty()) {
                 LineChart(
                     values = state.trend.map { it.avgPricePence },
-                    lineColor = FuelTypes.color(state.selectedFuelType),
+                    lineColor = fuelColor(state.selectedFuelType),
                     minValue = state.trend.minOf { it.minPricePence },
                     maxValue = state.trend.maxOf { it.maxPricePence },
                     modifier = Modifier
@@ -213,7 +214,10 @@ private fun StatCard(label: String, value: String, modifier: Modifier = Modifier
 
 @Composable
 private fun FuelTypeCard(avg: NationalAverageDto, isSelected: Boolean, onClick: () -> Unit) {
+    // Raw palette color for the subtle selected-card tint; theme-aware color for the label text
+    // so Diesel/Super Diesel labels stay legible in dark mode.
     val color = FuelTypes.color(avg.fuelType)
+    val labelColor = fuelColor(avg.fuelType)
     Card(
         modifier = Modifier
             .width(150.dp)
@@ -226,7 +230,7 @@ private fun FuelTypeCard(avg: NationalAverageDto, isSelected: Boolean, onClick: 
             Text(
                 fuelLabel(avg.fuelType),
                 style = MaterialTheme.typography.labelLarge,
-                color = color,
+                color = labelColor,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(Modifier.height(4.dp))

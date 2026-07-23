@@ -1,5 +1,7 @@
 package uk.co.fuelprices.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
 import androidx.compose.material.icons.Icons
@@ -10,7 +12,9 @@ import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -19,6 +23,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import uk.co.fuelprices.ui.components.CoffeeSupportDialog
+import uk.co.fuelprices.ui.screens.auth.AuthScreen
 import uk.co.fuelprices.ui.screens.detail.DetailScreen
 import uk.co.fuelprices.ui.screens.favourites.FavouritesScreen
 import uk.co.fuelprices.ui.screens.map.NearbyScreen
@@ -31,8 +37,54 @@ sealed class Screen(val route: String) {
     data object Prices : Screen("prices")
     data object Favourites : Screen("favourites")
     data object Preferences : Screen("preferences")
+    data object Auth : Screen("auth")
     data object Detail : Screen("detail/{stationId}") {
         fun createRoute(stationId: Int) = "detail/$stationId"
+    }
+}
+
+/**
+ * An in-app destination resolved from a launch source — either a price-drop notification tap
+ * (FCM) or an Android App Link (`https://fueltracker.uk/...`). Keeping URL-path knowledge here,
+ * next to the routes, means MainActivity only does Android intent plumbing.
+ */
+sealed interface DeepLinkTarget {
+    data class Station(val id: Int) : DeepLinkTarget
+    data object Prices : DeepLinkTarget
+    data object Settings : DeepLinkTarget
+    data object Home : DeepLinkTarget
+
+    companion object {
+        /**
+         * Maps an App Link URI to a destination. Paths mirror the fuel-web routes:
+         * `/stations/{id}` → Detail, `/prices` → Prices, `/settings` → Preferences, `/` → Nearby.
+         * Returns null for any unrecognised host/path (or a non-numeric station id) so the caller
+         * can fall back to just opening the app on its default screen.
+         */
+        fun fromUri(uri: Uri): DeepLinkTarget? {
+            if (!uri.host.equals("fueltracker.uk", ignoreCase = true)) return null
+            val segments = uri.pathSegments
+            return when {
+                segments.isEmpty() -> Home
+                segments[0] == "stations" && segments.size >= 2 ->
+                    segments[1].toIntOrNull()?.let { Station(it) }
+                segments[0] == "prices" -> Prices
+                segments[0] == "settings" -> Settings
+                else -> null
+            }
+        }
+    }
+}
+
+/**
+ * Navigate to a bottom-nav tab with the standard single-top / restore-state behaviour, so a deep
+ * link into a tab behaves identically to tapping it. Shared by the nav bar and deep-link handling.
+ */
+private fun NavController.navigateToTab(route: String) {
+    navigate(route) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
     }
 }
 
@@ -48,26 +100,47 @@ private val bottomNavItems = listOf(
 @Composable
 fun FuelApp(
     appPreferencesViewModel: AppPreferencesViewModel = hiltViewModel(),
-    // Set when launched from a price-drop notification tap — navigates straight to that station's
-    // Detail once, then calls onStartStationHandled so a config change / recomposition doesn't
-    // re-navigate.
-    startStationId: Int? = null,
-    onStartStationHandled: () -> Unit = {},
+    // Set when launched from a notification tap or an App Link — navigates to the target once, then
+    // calls onStartTargetHandled so a config change / recomposition doesn't re-navigate.
+    startTarget: DeepLinkTarget? = null,
+    onStartTargetHandled: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val useLongFuelNames by appPreferencesViewModel.useLongFuelNames.collectAsState()
+    val showCoffeePrompt by appPreferencesViewModel.showCoffeePrompt.collectAsState()
+    val context = LocalContext.current
 
-    LaunchedEffect(startStationId) {
-        startStationId?.let { id ->
-            navController.navigate(Screen.Detail.createRoute(id))
-            onStartStationHandled()
-        }
+    if (showCoffeePrompt) {
+        CoffeeSupportDialog(
+            onConfirm = {
+                appPreferencesViewModel.onCoffeeClicked()
+                try {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://buymeacoffee.com/iamburny"))
+                    )
+                } catch (_: Exception) {
+                }
+            },
+            onDismiss = { appPreferencesViewModel.onDismissCoffee() },
+        )
     }
 
-    // Hide bottom bar on detail screen
-    val showBottomBar = currentRoute != Screen.Detail.route
+    LaunchedEffect(startTarget) {
+        val target = startTarget ?: return@LaunchedEffect
+        when (target) {
+            is DeepLinkTarget.Station ->
+                navController.navigate(Screen.Detail.createRoute(target.id))
+            DeepLinkTarget.Prices -> navController.navigateToTab(Screen.Prices.route)
+            DeepLinkTarget.Settings -> navController.navigateToTab(Screen.Preferences.route)
+            DeepLinkTarget.Home -> navController.navigateToTab(Screen.Nearby.route)
+        }
+        onStartTargetHandled()
+    }
+
+    // Hide bottom bar on the full-screen detail and auth screens
+    val showBottomBar = currentRoute != Screen.Detail.route && currentRoute != Screen.Auth.route
 
     CompositionLocalProvider(LocalUseLongFuelNames provides useLongFuelNames) {
         Scaffold(
@@ -80,15 +153,7 @@ fun FuelApp(
                             } == true
                             NavigationBarItem(
                                 selected = selected,
-                                onClick = {
-                                    navController.navigate(item.screen.route) {
-                                        popUpTo(navController.graph.findStartDestination().id) {
-                                            saveState = true
-                                        }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                },
+                                onClick = { navController.navigateToTab(item.screen.route) },
                                 icon = { Icon(item.icon, contentDescription = item.label) },
                                 label = { Text(item.label) },
                             )
@@ -122,7 +187,15 @@ fun FuelApp(
                     FavouritesScreen(
                         onStationClick = { id ->
                             navController.navigate(Screen.Detail.createRoute(id))
-                        }
+                        },
+                        onSignIn = { navController.navigate(Screen.Auth.route) },
+                    )
+                }
+
+                composable(Screen.Auth.route) {
+                    AuthScreen(
+                        onAuthed = { navController.popBackStack() },
+                        onBack = { navController.popBackStack() },
                     )
                 }
 

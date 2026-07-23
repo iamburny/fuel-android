@@ -86,6 +86,17 @@ interface FuelPricesApi {
     @DELETE("api/favourites/{id}")
     suspend fun removeFavourite(@Path("id") favouriteId: Int)
 
+    // ── Area alerts ──────────────────────────────────────
+
+    @GET("api/alerts/")
+    suspend fun getAlerts(): List<AlertSubscriptionDto>
+
+    @POST("api/alerts/")
+    suspend fun addAlert(@Body body: AlertCreateRequest): AlertSubscriptionDto
+
+    @DELETE("api/alerts/{id}")
+    suspend fun removeAlert(@Path("id") id: Int)
+
     // ── Discrepancy ──────────────────────────────────────
 
     @POST("api/discrepancy/")

@@ -103,6 +103,7 @@ class CarPreferencesScreen(
                 mpg = preferences.mpg,
                 tankCapacityLitres = preferences.tankCapacityLitres,
                 useLongFuelNames = checked,
+                themeMode = preferences.themeMode,
             )
             preferences = preferencesStore.get()
             invalidate()

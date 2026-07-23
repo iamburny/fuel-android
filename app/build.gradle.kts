@@ -14,6 +14,20 @@ val localProperties = Properties().apply {
     if (file.exists()) file.inputStream().use { load(it) }
 }
 val mapsApiKey: String = localProperties.getProperty("MAPS_API_KEY") ?: ""
+// Release uses a separately-restricted key (lock it to the Play app-signing SHA-1 + applicationId
+// in Cloud Console). Falls back to the debug key if unset, so a release build still renders maps
+// locally when you haven't configured a release key.
+val mapsApiKeyRelease: String = localProperties.getProperty("MAPS_API_KEY_RELEASE") ?: mapsApiKey
+
+// Upload/release signing — kept out of version control. Create keystore.properties (see
+// keystore.properties.example) with storeFile/storePassword/keyAlias/keyPassword. When absent
+// (e.g. a fresh clone, or CI without secrets) the release build falls back to the debug keystore
+// so it still builds — but a Play-uploadable AAB requires the real keystore.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) keystorePropertiesFile.inputStream().use { load(it) }
+}
+val hasReleaseKeystore = keystoreProperties.getProperty("storeFile") != null
 
 android {
     namespace = "uk.co.fuelprices"
@@ -33,15 +47,32 @@ android {
         compose = true
     }
 
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signed with the debug keystore so the release APK is installable via sideload for
-            // on-device testing, and its cert SHA-1 matches the one the Maps API key is registered
-            // against (so the map still renders). MUST be swapped for a real upload/release key
-            // before any Play Store distribution.
-            signingConfig = signingConfigs.getByName("debug")
+            // Real upload keystore when configured (required for Play). Falls back to the debug
+            // keystore so a release build still succeeds without keystore.properties (sideload
+            // testing / fresh clones) — that fallback is NOT valid for Play distribution.
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+            // Use the release-restricted Maps key for release builds (debug builds keep the
+            // defaultConfig key above).
+            manifestPlaceholders["MAPS_API_KEY"] = mapsApiKeyRelease
         }
     }
 

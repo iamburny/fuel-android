@@ -251,6 +251,28 @@ data class FavouriteCreateRequest(
     @SerialName("price_threshold_pence") val priceThresholdPence: Double? = null,
 )
 
+// ── Area alerts ───────────────────────────────────────────
+
+@Serializable
+data class AlertSubscriptionDto(
+    val id: Int,
+    val latitude: Double,
+    val longitude: Double,
+    @SerialName("radius_miles") val radiusMiles: Double,
+    @SerialName("fuel_type") val fuelType: String,
+    val notify: Boolean = true,
+    val label: String? = null,
+)
+
+@Serializable
+data class AlertCreateRequest(
+    val latitude: Double,
+    val longitude: Double,
+    @SerialName("radius_miles") val radiusMiles: Double = 10.0,
+    @SerialName("fuel_type") val fuelType: String = "E10",
+    val label: String? = null,
+)
+
 // ── Discrepancy Report ───────────────────────────────────
 
 @Serializable

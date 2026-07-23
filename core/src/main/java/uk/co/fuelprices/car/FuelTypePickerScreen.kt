@@ -50,6 +50,7 @@ class FuelTypePickerScreen(
                 mpg = current.mpg,
                 tankCapacityLitres = current.tankCapacityLitres,
                 useLongFuelNames = current.useLongFuelNames,
+                themeMode = current.themeMode,
             )
             screenManager.pop()
         }

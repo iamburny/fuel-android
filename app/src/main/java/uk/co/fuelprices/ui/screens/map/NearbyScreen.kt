@@ -28,6 +28,7 @@ import uk.co.fuelprices.data.api.StationDto
 import uk.co.fuelprices.ui.components.BrandTitle
 import uk.co.fuelprices.ui.components.FuelMapView
 import uk.co.fuelprices.ui.components.MapMarker
+import uk.co.fuelprices.ui.theme.fuelColor
 import uk.co.fuelprices.ui.theme.fuelLabel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -347,7 +348,7 @@ private fun StationRow(station: StationDto, fuelType: String, onClick: () -> Uni
                     "%.1fp".format(price.pricePence),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = FuelTypes.color(fuelType),
+                    color = fuelColor(fuelType),
                 )
             }
         },

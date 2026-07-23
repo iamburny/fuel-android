@@ -23,6 +23,7 @@ import uk.co.fuelprices.data.api.*
 import uk.co.fuelprices.ui.components.BarChart
 import uk.co.fuelprices.ui.components.FuelMapView
 import uk.co.fuelprices.ui.components.MapMarker
+import uk.co.fuelprices.ui.theme.fuelColor
 import uk.co.fuelprices.ui.theme.fuelLabel
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -193,7 +194,7 @@ fun DetailScreen(
                             "%.1fp".format(price.pricePence),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            color = FuelTypes.color(price.fuelType),
+                            color = fuelColor(price.fuelType),
                         )
                     },
                 )

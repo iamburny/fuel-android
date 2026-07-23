@@ -14,6 +14,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import uk.co.fuelprices.data.api.FuelTypes
+import uk.co.fuelprices.ui.theme.ThemeMode
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -75,6 +76,29 @@ fun PreferencesScreen(
                     checked = state.useLongFuelNames,
                     onCheckedChange = { viewModel.setUseLongFuelNames(it) },
                 )
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            Text(
+                "Appearance",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            val themeOptions = listOf(
+                ThemeMode.SYSTEM to "System",
+                ThemeMode.LIGHT to "Light",
+                ThemeMode.DARK to "Dark",
+            )
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                themeOptions.forEachIndexed { index, (mode, label) ->
+                    SegmentedButton(
+                        selected = state.themeMode == mode.name,
+                        onClick = { viewModel.setThemeMode(mode.name) },
+                        shape = SegmentedButtonDefaults.itemShape(index, themeOptions.size),
+                        label = { Text(label) },
+                    )
+                }
             }
 
             Spacer(Modifier.height(8.dp))

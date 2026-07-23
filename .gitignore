@@ -20,6 +20,9 @@ captures/
 
 # Secrets
 secrets.properties
+keystore.properties
+*.keystore
+*.jks
 
 # Logs and temporary files
 *.log
