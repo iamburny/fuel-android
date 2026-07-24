@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
@@ -27,6 +28,7 @@ import uk.co.fuelprices.ui.components.CoffeeSupportDialog
 import uk.co.fuelprices.ui.screens.auth.AuthScreen
 import uk.co.fuelprices.ui.screens.detail.DetailScreen
 import uk.co.fuelprices.ui.screens.favourites.FavouritesScreen
+import uk.co.fuelprices.ui.screens.heatmap.HeatmapScreen
 import uk.co.fuelprices.ui.screens.map.NearbyScreen
 import uk.co.fuelprices.ui.screens.preferences.PreferencesScreen
 import uk.co.fuelprices.ui.screens.prices.PricesScreen
@@ -35,6 +37,7 @@ import uk.co.fuelprices.ui.theme.LocalUseLongFuelNames
 sealed class Screen(val route: String) {
     data object Nearby : Screen("nearby")
     data object Prices : Screen("prices")
+    data object Heatmap : Screen("heatmap")
     data object Favourites : Screen("favourites")
     data object Preferences : Screen("preferences")
     data object Auth : Screen("auth")
@@ -93,6 +96,7 @@ private data class BottomNavItem(val screen: Screen, val label: String, val icon
 private val bottomNavItems = listOf(
     BottomNavItem(Screen.Nearby, "Nearby", Icons.Default.Map),
     BottomNavItem(Screen.Prices, "Prices", Icons.AutoMirrored.Filled.TrendingUp),
+    BottomNavItem(Screen.Heatmap, "Heatmap", Icons.Default.LocalFireDepartment),
     BottomNavItem(Screen.Favourites, "Favourites", Icons.Default.Favorite),
     BottomNavItem(Screen.Preferences, "Settings", Icons.Default.Settings),
 )
@@ -183,6 +187,10 @@ fun FuelApp(
                     PricesScreen()
                 }
 
+                composable(Screen.Heatmap.route) {
+                    HeatmapScreen()
+                }
+
                 composable(Screen.Favourites.route) {
                     FavouritesScreen(
                         onStationClick = { id ->
@@ -200,7 +208,9 @@ fun FuelApp(
                 }
 
                 composable(Screen.Preferences.route) {
-                    PreferencesScreen()
+                    PreferencesScreen(
+                        onSignIn = { navController.navigate(Screen.Auth.route) },
+                    )
                 }
 
                 composable(

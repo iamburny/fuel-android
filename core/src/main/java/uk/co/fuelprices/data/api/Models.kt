@@ -202,6 +202,26 @@ data class TrendPoint(
 )
 
 @Serializable
+data class HeatmapResponse(
+    @SerialName("fuel_type") val fuelType: String,
+    @SerialName("national_avg_price_pence") val nationalAvgPricePence: Double,
+    @SerialName("cell_size_degrees") val cellSizeDegrees: Double = 0.4,
+    val cells: List<HeatmapCell>,
+    @SerialName("discrepancy_report_url") val discrepancyReportUrl: String = "",
+    @SerialName("data_notice") val dataNotice: String = "",
+)
+
+@Serializable
+data class HeatmapCell(
+    val latitude: Double,
+    val longitude: Double,
+    @SerialName("avg_price_pence") val avgPricePence: Double,
+    @SerialName("delta_pence") val deltaPence: Double,
+    @SerialName("delta_percent") val deltaPercent: Double,
+    @SerialName("station_count") val stationCount: Int,
+)
+
+@Serializable
 data class PriceHistoryResponse(
     @SerialName("station_id") val stationId: Int,
     @SerialName("station_name") val stationName: String,
@@ -225,6 +245,9 @@ data class RegisterRequest(val email: String, val password: String)
 
 @Serializable
 data class GoogleLoginRequest(@SerialName("id_token") val idToken: String)
+
+@Serializable
+data class ForgotPasswordRequest(val email: String)
 
 @Serializable
 data class TokenResponse(

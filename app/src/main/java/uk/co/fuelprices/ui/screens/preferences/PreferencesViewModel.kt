@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferencesStore
 import javax.inject.Inject
 
@@ -19,11 +20,14 @@ data class PreferencesUiState(
     val useLongFuelNames: Boolean = false,
     val themeMode: String = "SYSTEM",
     val justSaved: Boolean = false,
+    val isLoggedIn: Boolean = false,
+    val email: String? = null,
 )
 
 @HiltViewModel
 class PreferencesViewModel @Inject constructor(
     private val store: UserPreferencesStore,
+    private val repo: FuelRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PreferencesUiState())
@@ -41,6 +45,25 @@ class PreferencesViewModel @Inject constructor(
                 useLongFuelNames = prefs.useLongFuelNames,
                 themeMode = prefs.themeMode,
             )
+            refreshAccount()
+        }
+    }
+
+    /** Re-read the signed-in state. The screen calls this on entry so a login/logout that happened
+     *  on the Auth screen (TokenStore exposes no Flow) is reflected when returning here. */
+    fun refreshAccount() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(
+                isLoggedIn = repo.isLoggedIn(),
+                email = repo.currentEmail(),
+            )
+        }
+    }
+
+    fun signOut() {
+        viewModelScope.launch {
+            repo.logout()
+            _state.value = _state.value.copy(isLoggedIn = false, email = null)
         }
     }
 

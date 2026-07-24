@@ -1,14 +1,19 @@
 package uk.co.fuelprices.ui.screens.preferences
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -19,9 +24,15 @@ import uk.co.fuelprices.ui.theme.ThemeMode
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun PreferencesScreen(
+    onSignIn: () -> Unit = {},
     viewModel: PreferencesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
+
+    // Re-check the signed-in state each time this screen enters composition, so a sign-in/out done
+    // on the Auth screen is reflected on return (TokenStore exposes no reactive Flow).
+    LaunchedEffect(Unit) { viewModel.refreshAccount() }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Preferences") }) }
@@ -33,6 +44,68 @@ fun PreferencesScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // ── Buy me a coffee ──
+            Card(
+                onClick = {
+                    try {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://buymeacoffee.com/iamburny"))
+                        )
+                    } catch (_: Exception) {
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(Icons.Filled.LocalCafe, contentDescription = null, tint = Color(0xFFFFDD00))
+                    Column {
+                        Text("Buy me a coffee", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Fuel Tracker UK is free and ad-free — support keeps it running",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            // ── Account ──
+            Text("Account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Card(Modifier.fillMaxWidth()) {
+                if (state.isLoggedIn) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Signed in" + (state.email?.let { " as $it" } ?: ""),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        OutlinedButton(onClick = { viewModel.signOut() }) { Text("Sign out") }
+                    }
+                } else {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            "Sign in to save favourite stations and get price-drop alerts.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Button(onClick = onSignIn) { Text("Sign in") }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
             Text(
                 "Your usual fuel",
                 style = MaterialTheme.typography.titleMedium,

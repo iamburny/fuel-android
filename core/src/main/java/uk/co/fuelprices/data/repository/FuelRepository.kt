@@ -142,6 +142,8 @@ class FuelRepository @Inject constructor(
 
     suspend fun getNationalAverages(): AveragesResponse = api.getNationalAverages()
 
+    suspend fun getHeatmap(fuelType: String = "E10"): HeatmapResponse = api.getHeatmap(fuelType)
+
     suspend fun getPriceHistory(stationId: Int, fuelType: String = "E10", days: Int = 30) =
         api.getPriceHistory(stationId, fuelType, days)
 
@@ -180,12 +182,26 @@ class FuelRepository @Inject constructor(
         }
     }
 
+    /** Ask the backend to email a password-reset link. The endpoint always succeeds (it never
+     *  reveals whether the address is registered); the actual reset happens on the web page the
+     *  email links to. */
+    suspend fun forgotPassword(email: String) {
+        try {
+            api.forgotPassword(ForgotPasswordRequest(email))
+        } catch (e: retrofit2.HttpException) {
+            throw AuthException.from(e)
+        }
+    }
+
     /** Register this device's FCM token against the logged-in user (call after login). */
     suspend fun registerFcmToken(token: String) = api.updateFcmToken(token)
 
     suspend fun logout() = tokenStore.clear()
 
     suspend fun isLoggedIn() = tokenStore.isLoggedIn()
+
+    /** The signed-in user's email for display (null when logged out). */
+    suspend fun currentEmail() = tokenStore.getEmail()
 
     // ── Favourites ───────────────────────────────────────
 

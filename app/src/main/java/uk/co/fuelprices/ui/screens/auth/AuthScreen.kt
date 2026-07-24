@@ -28,7 +28,15 @@ fun AuthScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (state.isRegister) "Sign up" else "Log in") },
+                title = {
+                    Text(
+                        when {
+                            state.isReset -> "Reset password"
+                            state.isRegister -> "Sign up"
+                            else -> "Log in"
+                        }
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -44,6 +52,70 @@ fun AuthScreen(
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            if (state.isReset) {
+                // ── Forgot-password: request a reset email ──
+                Text(
+                    "Reset your password",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    "Enter your email and we'll send you a link to reset your password.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+
+                OutlinedTextField(
+                    value = state.email,
+                    onValueChange = viewModel::setEmail,
+                    label = { Text("Email") },
+                    singleLine = true,
+                    enabled = !state.resetSent,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                if (state.error != null) {
+                    Text(
+                        state.error!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+
+                if (state.resetSent) {
+                    Text(
+                        "If that address has an account, we've sent a reset link. Check your inbox " +
+                            "(and spam folder) — the link expires in 1 hour.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                } else {
+                    Button(
+                        onClick = { viewModel.sendPasswordReset() },
+                        enabled = !state.loading,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        if (state.loading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                        } else {
+                            Text("Send reset link")
+                        }
+                    }
+                }
+
+                TextButton(
+                    onClick = viewModel::backFromReset,
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                ) {
+                    Text("Back to log in")
+                }
+                return@Column
+            }
+
             Text(
                 if (state.isRegister) "Create an account" else "Welcome back",
                 style = MaterialTheme.typography.headlineSmall,
@@ -94,6 +166,15 @@ fun AuthScreen(
                     )
                 } else {
                     Text(if (state.isRegister) "Sign up" else "Log in")
+                }
+            }
+
+            if (!state.isRegister) {
+                TextButton(
+                    onClick = viewModel::showResetPassword,
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                ) {
+                    Text("Forgot password?")
                 }
             }
 

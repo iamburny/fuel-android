@@ -47,6 +47,11 @@ interface FuelPricesApi {
     @GET("api/prices/averages")
     suspend fun getNationalAverages(): AveragesResponse
 
+    @GET("api/prices/heatmap")
+    suspend fun getHeatmap(
+        @Query("fuel_type") fuelType: String = "E10",
+    ): HeatmapResponse
+
     @GET("api/prices/history/{stationId}")
     suspend fun getPriceHistory(
         @Path("stationId") stationId: Int,
@@ -74,6 +79,9 @@ interface FuelPricesApi {
 
     @POST("api/auth/google")
     suspend fun googleLogin(@Body body: GoogleLoginRequest): TokenResponse
+
+    @POST("api/auth/forgot-password")
+    suspend fun forgotPassword(@Body body: ForgotPasswordRequest)
 
     @POST("api/auth/fcm-token")
     suspend fun updateFcmToken(@Query("fcm_token") token: String)

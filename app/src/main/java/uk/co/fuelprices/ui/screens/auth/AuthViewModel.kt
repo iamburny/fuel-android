@@ -27,6 +27,9 @@ data class AuthUiState(
     val email: String = "",
     val password: String = "",
     val isRegister: Boolean = false,
+    // When true, the screen shows the "forgot password" email-entry form instead of login/register.
+    val isReset: Boolean = false,
+    val resetSent: Boolean = false,
     val loading: Boolean = false,
     val error: String? = null,
 )
@@ -43,6 +46,33 @@ class AuthViewModel @Inject constructor(
     fun setPassword(value: String) { _state.value = _state.value.copy(password = value, error = null) }
     fun toggleMode() {
         _state.value = _state.value.copy(isRegister = !_state.value.isRegister, error = null)
+    }
+
+    /** Switch to / from the "forgot password" email-entry form. */
+    fun showResetPassword() {
+        _state.value = _state.value.copy(isReset = true, resetSent = false, error = null)
+    }
+
+    fun backFromReset() {
+        _state.value = _state.value.copy(isReset = false, resetSent = false, error = null)
+    }
+
+    /** Request a password-reset email. The reset itself is completed on the web page it links to. */
+    fun sendPasswordReset() {
+        val email = _state.value.email.trim()
+        if (email.isBlank()) {
+            _state.value = _state.value.copy(error = "Enter your email address")
+            return
+        }
+        viewModelScope.launch {
+            _state.value = _state.value.copy(loading = true, error = null)
+            try {
+                repo.forgotPassword(email)
+                _state.value = _state.value.copy(loading = false, resetSent = true)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(loading = false, error = friendlyError(e))
+            }
+        }
     }
 
     fun submit(onSuccess: () -> Unit) {
