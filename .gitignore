@@ -23,6 +23,7 @@ secrets.properties
 keystore.properties
 *.keystore
 *.jks
+google-services.json
 
 # Logs and temporary files
 *.log
