@@ -21,7 +21,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import uk.co.fuelprices.data.api.FuelTypes
 import uk.co.fuelprices.data.api.NationalAverageDto
 import uk.co.fuelprices.data.api.TrendPoint
-import uk.co.fuelprices.ui.components.LineChart
+import uk.co.fuelprices.ui.components.PriceLineChart
 import uk.co.fuelprices.ui.theme.fuelColor
 import uk.co.fuelprices.ui.theme.fuelLabel
 
@@ -129,43 +129,15 @@ fun PricesScreen(
             }
 
             if (state.trend.isNotEmpty()) {
-                LineChart(
+                // Scale to the plotted average line's own range (not the daily all-station
+                // min/max, which squashed the line flat near the bottom).
+                PriceLineChart(
                     values = state.trend.map { it.avgPricePence },
+                    dates = state.trend.map { it.date },
                     lineColor = fuelColor(state.selectedFuelType),
-                    minValue = state.trend.minOf { it.minPricePence },
-                    maxValue = state.trend.maxOf { it.maxPricePence },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp)
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-
-                // Date labels
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        state.trend.first().date.take(10),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline,
-                    )
-                    Text(
-                        state.trend.last().date.take(10),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline,
-                    )
-                }
-
-                val minTrend = state.trend.minOf { it.minPricePence }
-                val maxTrend = state.trend.maxOf { it.maxPricePence }
-                Text(
-                    "Range: %.1fp – %.1fp".format(minTrend, maxTrend),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                 )
             }
 

@@ -20,7 +20,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import uk.co.fuelprices.data.api.*
-import uk.co.fuelprices.ui.components.BarChart
+import uk.co.fuelprices.ui.components.PriceLineChart
 import uk.co.fuelprices.ui.components.FuelMapView
 import uk.co.fuelprices.ui.components.MapMarker
 import uk.co.fuelprices.ui.theme.fuelColor
@@ -266,45 +266,21 @@ fun DetailScreen(
                 HorizontalDivider()
             }
 
-            // Price history bar chart
+            // Price history line chart
             if (state.priceHistory.isNotEmpty()) {
+                val historyFuel = state.station?.prices?.firstOrNull()?.fuelType ?: "E10"
                 Text(
                     "Price History (30 days)",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 4.dp),
                 )
-                BarChart(
+                PriceLineChart(
                     values = state.priceHistory.map { it.pricePence },
+                    dates = state.priceHistory.map { it.reportedAt },
+                    lineColor = fuelColor(historyFuel),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(160.dp)
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-                // Date range + price range labels
-                val minPrice = state.priceHistory.minOf { it.pricePence }
-                val maxPrice = state.priceHistory.maxOf { it.pricePence }
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        state.priceHistory.first().reportedAt.take(10),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline,
-                    )
-                    Text(
-                        state.priceHistory.last().reportedAt.take(10),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline,
-                    )
-                }
-                Text(
-                    "%.1fp – %.1fp".format(minPrice, maxPrice),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                 )
             }
 
