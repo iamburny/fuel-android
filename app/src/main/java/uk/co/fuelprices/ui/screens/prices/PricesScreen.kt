@@ -2,17 +2,22 @@ package uk.co.fuelprices.ui.screens.prices
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -28,6 +33,7 @@ import uk.co.fuelprices.ui.theme.fuelLabel
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun PricesScreen(
+    onOpenHeatmap: () -> Unit = {},
     viewModel: PricesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -57,6 +63,13 @@ fun PricesScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
         ) {
+            HeatmapLinkCard(
+                onClick = onOpenHeatmap,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp, 12.dp, 16.dp, 4.dp),
+            )
+
             // Selected fuel type stats
             val selected = state.averages.find { it.fuelType == state.selectedFuelType }
             if (selected != null) {
@@ -167,6 +180,43 @@ fun PricesScreen(
                 color = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.padding(16.dp, 0.dp, 16.dp, 16.dp),
             )
+        }
+    }
+}
+
+@Composable
+private fun HeatmapLinkCard(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Card(
+        onClick = onClick,
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+    ) {
+        Row(
+            Modifier
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color(0xFF16A34A), Color(0xFFEAB308), Color(0xFFDC2626))
+                    )
+                )
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Filled.LocalFireDepartment, contentDescription = null, tint = Color.White)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "UK Price Heat Map",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                )
+                Text(
+                    "See how prices compare to the national average, by area",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.9f),
+                )
+            }
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White)
         }
     }
 }

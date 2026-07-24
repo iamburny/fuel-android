@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
@@ -96,7 +95,6 @@ private data class BottomNavItem(val screen: Screen, val label: String, val icon
 private val bottomNavItems = listOf(
     BottomNavItem(Screen.Nearby, "Nearby", Icons.Default.Map),
     BottomNavItem(Screen.Prices, "Prices", Icons.AutoMirrored.Filled.TrendingUp),
-    BottomNavItem(Screen.Heatmap, "Heatmap", Icons.Default.LocalFireDepartment),
     BottomNavItem(Screen.Favourites, "Favourites", Icons.Default.Favorite),
     BottomNavItem(Screen.Preferences, "Settings", Icons.Default.Settings),
 )
@@ -143,8 +141,10 @@ fun FuelApp(
         onStartTargetHandled()
     }
 
-    // Hide bottom bar on the full-screen detail and auth screens
-    val showBottomBar = currentRoute != Screen.Detail.route && currentRoute != Screen.Auth.route
+    // Hide bottom bar on full-screen destinations reached by pushing (not a bottom-nav tab)
+    val showBottomBar = currentRoute != Screen.Detail.route &&
+        currentRoute != Screen.Auth.route &&
+        currentRoute != Screen.Heatmap.route
 
     CompositionLocalProvider(LocalUseLongFuelNames provides useLongFuelNames) {
         Scaffold(
@@ -184,11 +184,13 @@ fun FuelApp(
                 }
 
                 composable(Screen.Prices.route) {
-                    PricesScreen()
+                    PricesScreen(
+                        onOpenHeatmap = { navController.navigate(Screen.Heatmap.route) },
+                    )
                 }
 
                 composable(Screen.Heatmap.route) {
-                    HeatmapScreen()
+                    HeatmapScreen(onBack = { navController.popBackStack() })
                 }
 
                 composable(Screen.Favourites.route) {

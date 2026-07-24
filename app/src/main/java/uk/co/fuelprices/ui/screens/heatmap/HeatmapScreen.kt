@@ -5,6 +5,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,12 +32,24 @@ import kotlin.math.sqrt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HeatmapScreen(viewModel: HeatmapViewModel = hiltViewModel()) {
+fun HeatmapScreen(
+    onBack: () -> Unit = {},
+    viewModel: HeatmapViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsState()
     var selected by remember { mutableStateOf<HeatmapCell?>(null) }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Price Heat Map") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Price Heat Map") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+            )
+        },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             // Fuel-type selector
