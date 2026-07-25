@@ -27,6 +27,9 @@ data class UserPreferences(
     val appOpenCount: Int = 0,
     /** App-open count until which the support prompt is suppressed (set when the CTA is tapped). */
     val coffeePromptPausedUntilOpen: Int = 0,
+    /** Text of the last-dismissed announcement banner message — re-shows automatically if the
+     *  flag's variant text changes (a new announcement), same behaviour as the web/admin banner. */
+    val dismissedAnnouncementMessage: String? = null,
 ) {
     /** True once there's enough info to estimate a driving cost (see FuelCostCalculator). */
     val canEstimateDriveCost: Boolean get() = mpg != null && tankCapacityLitres != null
@@ -42,6 +45,7 @@ class UserPreferencesStore @Inject constructor(@ApplicationContext private val c
     private val themeModeKey = stringPreferencesKey("theme_mode")
     private val appOpenCountKey = intPreferencesKey("app_open_count")
     private val coffeePromptPausedUntilKey = intPreferencesKey("coffee_prompt_paused_until")
+    private val dismissedAnnouncementKey = stringPreferencesKey("dismissed_announcement_message")
 
     val preferences: Flow<UserPreferences> = context.userPreferencesDataStore.data.map { prefs ->
         UserPreferences(
@@ -52,6 +56,7 @@ class UserPreferencesStore @Inject constructor(@ApplicationContext private val c
             themeMode = prefs[themeModeKey] ?: "SYSTEM",
             appOpenCount = prefs[appOpenCountKey] ?: 0,
             coffeePromptPausedUntilOpen = prefs[coffeePromptPausedUntilKey] ?: 0,
+            dismissedAnnouncementMessage = prefs[dismissedAnnouncementKey],
         )
     }
 
@@ -94,6 +99,14 @@ class UserPreferencesStore @Inject constructor(@ApplicationContext private val c
     suspend fun pauseCoffeePrompt(untilOpen: Int) {
         context.userPreferencesDataStore.edit { prefs ->
             prefs[coffeePromptPausedUntilKey] = untilOpen
+        }
+    }
+
+    /** Records [message] as dismissed — the announcement banner stays hidden until the flag's
+     *  variant text changes to something else. */
+    suspend fun dismissAnnouncement(message: String) {
+        context.userPreferencesDataStore.edit { prefs ->
+            prefs[dismissedAnnouncementKey] = message
         }
     }
 }

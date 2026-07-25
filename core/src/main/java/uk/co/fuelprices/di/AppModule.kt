@@ -8,6 +8,9 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import io.getunleash.android.DefaultUnleash
+import io.getunleash.android.Unleash
+import io.getunleash.android.UnleashConfig
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -79,4 +82,19 @@ object AppModule {
         Room.databaseBuilder(context, FuelDatabase::class.java, "fuel_prices.db")
             .fallbackToDestructiveMigration()
             .build()
+
+    // Feature flags — self-hosted Unleash, single instance app-wide (its own docs warn against
+    // multiple instances due to on-disk cache contention). An empty UNLEASH_CLIENT_KEY (no
+    // local.properties entry yet) degrades the same way an unset MAPS_API_KEY does — flag
+    // evaluations just fall back to their default, no crash.
+    @Provides
+    @Singleton
+    fun provideUnleashClient(@ApplicationContext context: Context): Unleash =
+        DefaultUnleash(
+            androidContext = context,
+            unleashConfig = UnleashConfig.newBuilder("fuel-android")
+                .proxyUrl(BuildConfig.UNLEASH_URL.trimEnd('/') + "/api/frontend")
+                .clientKey(BuildConfig.UNLEASH_CLIENT_KEY)
+                .build(),
+        )
 }

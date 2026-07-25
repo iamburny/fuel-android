@@ -6,6 +6,21 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+import java.util.Properties
+
+// Unleash Frontend API client key — kept out of version control, same pattern as :app's
+// MAPS_API_KEY/GOOGLE_WEB_CLIENT_ID. Lives here (not app/build.gradle.kts) because the Unleash
+// client is provided as a Hilt singleton in this module's AppModule.kt, alongside Retrofit/Room —
+// :app doesn't have its own BuildConfig visibility into :core's providers. A Frontend token is
+// safe to ship client-side by Unleash's own design (unlike a Backend token), so this isn't as
+// sensitive as the other local.properties secrets, but it's kept out of source control by the
+// same convention regardless.
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val unleashClientKey: String = localProperties.getProperty("UNLEASH_CLIENT_KEY") ?: ""
+
 android {
     // Distinct from :app's / :automotive's namespace to avoid R-class/BuildConfig
     // collisions on their compile classpath; Kotlin package names are unaffected.
@@ -17,6 +32,9 @@ android {
 
         // Backend API base URL — override per build variant
         buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8000\"")
+        // Self-hosted Unleash — public Frontend API endpoint (not secret, unlike the client key).
+        buildConfigField("String", "UNLEASH_URL", "\"https://flags.burny.uk\"")
+        buildConfigField("String", "UNLEASH_CLIENT_KEY", "\"$unleashClientKey\"")
     }
 
     buildFeatures {
@@ -67,6 +85,9 @@ dependencies {
 
     // DataStore (token storage)
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    // Feature flags — self-hosted Unleash (Frontend API client, safe to embed client-side)
+    implementation("io.getunleash:unleash-android:1.3.0")
 
     // Car App Library — platform-agnostic core (Screen/Session/CarAppService/model.*).
     // Platform-specific artifacts (app-projected, app-automotive) are added by the

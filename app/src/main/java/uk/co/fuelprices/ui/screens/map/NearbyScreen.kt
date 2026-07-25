@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import uk.co.fuelprices.data.api.FuelTypes
 import uk.co.fuelprices.data.api.StationDto
+import uk.co.fuelprices.ui.components.AnnouncementBanner
 import uk.co.fuelprices.ui.components.BrandTitle
 import uk.co.fuelprices.ui.components.FuelMapView
 import uk.co.fuelprices.ui.components.MapMarker
@@ -82,7 +83,9 @@ fun NearbyScreen(
             )
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier.fillMaxSize().padding(padding)) {
+        AnnouncementBanner()
+        Box(Modifier.weight(1f).fillMaxWidth()) {
             // Falls back to the GPS-anchored station set until the user's first drag produces a
             // viewport load; the bottom list panel below always keeps using state.stations,
             // unaffected by dragging.
@@ -317,6 +320,7 @@ fun NearbyScreen(
                     }
                 }
             }
+        }
         }
     }
 }
