@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import uk.co.fuelprices.data.api.PriceDto
 import uk.co.fuelprices.data.api.StationDto
 import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferencesStore
@@ -240,9 +241,29 @@ class NearbyViewModel @Inject constructor(
             try {
                 val s = _state.value
                 val response = repo.getCheapest(s.selectedFuelType, s.userLat, s.userLng, s.radiusMiles)
+                // /api/prices/cheapest's station objects carry no `prices` array — only a
+                // top-level price_pence for the one matched fuel type — so StationRow/the map
+                // markers' `station.prices.filter(...)` found nothing and rendered no price at
+                // all. Synthesize the single-entry list they expect (mirrors fuel-web's page.tsx
+                // fix for the same endpoint shape). Also sorted client-side by price ascending —
+                // not just relying on the backend's order — so "Cheapest" always reads
+                // cheapest-first.
                 _state.value = s.copy(
                     isLoading = false,
-                    stations = response.results.map { it.station },
+                    stations = response.results
+                        .sortedBy { it.pricePence }
+                        .map { entry ->
+                            entry.station.copy(
+                                distanceMiles = entry.distanceMiles,
+                                prices = listOf(
+                                    PriceDto(
+                                        fuelType = s.selectedFuelType,
+                                        pricePence = entry.pricePence,
+                                        reportedAt = "",
+                                    )
+                                ),
+                            )
+                        },
                     discrepancyReportUrl = response.discrepancyReportUrl,
                 )
             } catch (e: Exception) {
