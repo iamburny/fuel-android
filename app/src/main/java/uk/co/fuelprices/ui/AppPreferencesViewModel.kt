@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import uk.co.fuelprices.data.repository.UserPreferencesStore
+import uk.co.fuelprices.util.FeatureFlags
 import javax.inject.Inject
 
 /**
@@ -22,6 +23,7 @@ import javax.inject.Inject
 @HiltViewModel
 class AppPreferencesViewModel @Inject constructor(
     private val store: UserPreferencesStore,
+    private val featureFlags: FeatureFlags,
 ) : ViewModel() {
 
     val useLongFuelNames = store.preferences
@@ -49,7 +51,10 @@ class AppPreferencesViewModel @Inject constructor(
             val count = store.incrementAppOpenCount()
             currentOpenCount = count
             val pausedUntil = store.get().coffeePromptPausedUntilOpen
-            if ((count - 1) % PROMPT_EVERY == 0 && count >= pausedUntil) {
+            val cadenceDue = (count - 1) % PROMPT_EVERY == 0 && count >= pausedUntil
+            // shared.buy-me-a-coffee (default true — preserves existing behaviour if Unleash is
+            // unreachable/unconfigured) gates the whole prompt, not just its cadence.
+            if (cadenceDue && featureFlags.isEnabled("shared.buy-me-a-coffee", default = true)) {
                 _showCoffeePrompt.value = true
             }
         }

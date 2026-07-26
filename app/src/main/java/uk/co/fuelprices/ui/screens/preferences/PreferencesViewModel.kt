@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferencesStore
+import uk.co.fuelprices.util.FeatureFlags
 import javax.inject.Inject
 
 data class PreferencesUiState(
@@ -22,12 +23,17 @@ data class PreferencesUiState(
     val justSaved: Boolean = false,
     val isLoggedIn: Boolean = false,
     val email: String? = null,
+    // Default true: these flags gate pre-existing UI, so if Unleash is unreachable/unconfigured
+    // the app falls back to its prior (visible) behaviour rather than silently hiding it.
+    val showBuyMeCoffee: Boolean = true,
+    val showAlsoAvailableOnWeb: Boolean = true,
 )
 
 @HiltViewModel
 class PreferencesViewModel @Inject constructor(
     private val store: UserPreferencesStore,
     private val repo: FuelRepository,
+    private val featureFlags: FeatureFlags,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PreferencesUiState())
@@ -38,7 +44,7 @@ class PreferencesViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val prefs = store.get()
-            _state.value = PreferencesUiState(
+            _state.value = _state.value.copy(
                 fuelType = prefs.fuelType,
                 mpgText = prefs.mpg?.let { formatNumber(it) } ?: "",
                 tankCapacityText = prefs.tankCapacityLitres?.let { formatNumber(it) } ?: "",
@@ -47,6 +53,19 @@ class PreferencesViewModel @Inject constructor(
             )
             refreshAccount()
         }
+        // featureFlags.version is a StateFlow, so this also runs once immediately with the
+        // current flag state — no separate initial check needed. Re-runs on every poll/refresh
+        // so a flag toggled via fuel-admin's /flags page takes effect without an app restart.
+        viewModelScope.launch {
+            featureFlags.version.collect { refreshFlags() }
+        }
+    }
+
+    private fun refreshFlags() {
+        _state.value = _state.value.copy(
+            showBuyMeCoffee = featureFlags.isEnabled("shared.buy-me-a-coffee", default = true),
+            showAlsoAvailableOnWeb = featureFlags.isEnabled("fuel-android.also-available-on-web", default = true),
+        )
     }
 
     /** Re-read the signed-in state. The screen calls this on entry so a login/logout that happened

@@ -45,67 +45,71 @@ fun PreferencesScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // ── Buy me a coffee ──
-            Card(
-                onClick = {
-                    try {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://buymeacoffee.com/iamburny"))
-                        )
-                    } catch (_: Exception) {
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+            // ── Buy me a coffee ── (flag: shared.buy-me-a-coffee)
+            if (state.showBuyMeCoffee) {
+                Card(
+                    onClick = {
+                        try {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://buymeacoffee.com/iamburny"))
+                            )
+                        } catch (_: Exception) {
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Icon(Icons.Filled.LocalCafe, contentDescription = null, tint = Color(0xFFFFDD00))
-                    Column {
-                        Text("Buy me a coffee", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text(
-                            "Fuel Tracker UK is free and ad-free — support keeps it running",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline,
-                        )
+                    Row(
+                        Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Icon(Icons.Filled.LocalCafe, contentDescription = null, tint = Color(0xFFFFDD00))
+                        Column {
+                            Text("Buy me a coffee", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(
+                                "Fuel Tracker UK is free and ad-free — support keeps it running",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline,
+                            )
+                        }
                     }
                 }
+
+                Spacer(Modifier.height(8.dp))
             }
 
-            Spacer(Modifier.height(8.dp))
-
-            // ── Also available on the web ──
-            Card(
-                onClick = {
-                    try {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://fueltracker.uk"))
-                        )
-                    } catch (_: Exception) {
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+            // ── Also available on the web ── (flag: fuel-android.also-available-on-web)
+            if (state.showAlsoAvailableOnWeb) {
+                Card(
+                    onClick = {
+                        try {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://fueltracker.uk"))
+                            )
+                        } catch (_: Exception) {
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Icon(Icons.Filled.Language, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Column {
-                        Text("Also available on the web", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text(
-                            "fueltracker.uk — same account, same favourites",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline,
-                        )
+                    Row(
+                        Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Icon(Icons.Filled.Language, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Column {
+                            Text("Also available on the web", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(
+                                "fueltracker.uk — same account, same favourites",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline,
+                            )
+                        }
                     }
                 }
-            }
 
-            Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(8.dp))
+            }
 
             // ── Account ──
             Text("Account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
