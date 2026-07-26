@@ -60,10 +60,19 @@ class StationDetailScreen(
         // separate "Data & Reporting" screen alongside a discrepancy-report web link — but AAOS
         // blocks car apps from opening web links, so that screen was removed; the required
         // attribution is inlined here instead.
+        //
+        // The disclaimer leads (rather than trailing after the source detail) since a car host's
+        // row text can truncate to ~2 lines — if anything gets cut off it should be the source
+        // detail, not the non-affiliation statement Google Play's Misleading Claims policy
+        // requires for apps showing government information.
         paneBuilder.addRow(
             Row.Builder()
                 .setTitle("Data source")
-                .addText("UK Government Fuel Finder scheme (Open Government Licence). Shown unmodified.")
+                .addText(
+                    "Independent app, not affiliated with HM Government. Source: UK Gov Fuel " +
+                        "Finder scheme (fuel-finder.service.gov.uk), Open Government Licence. " +
+                        "Shown unmodified."
+                )
                 .build()
         )
 

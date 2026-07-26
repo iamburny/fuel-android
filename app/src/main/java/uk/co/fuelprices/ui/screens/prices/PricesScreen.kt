@@ -173,8 +173,13 @@ fun PricesScreen(
             }
 
             Text(
+                // Normally comes from the API's data_notice field (src/services/compliance.ts) —
+                // this fallback matches it in case that field is ever blank.
                 state.dataNotice.ifBlank {
-                    "Prices sourced from the UK Government Fuel Finder scheme under the Open Government Licence. Data is presented without modification."
+                    "Prices sourced from the UK Government's Fuel Finder scheme " +
+                        "(gov.uk/government/collections/fuel-finder) under the Open Government " +
+                        "Licence. Data is presented without modification. Fuel Tracker UK is an " +
+                        "independent app and is not affiliated with or endorsed by HM Government."
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline,

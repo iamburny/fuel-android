@@ -302,9 +302,14 @@ fun DetailScreen(
                 Text("Report a price discrepancy")
             }
 
-            // Compliance: data notice
+            // Compliance: data notice — names the official gov.uk source and states we're an
+            // independent, unaffiliated app (Google Play Misleading Claims policy requires a
+            // clear source link + non-affiliation disclaimer for apps showing government data).
             Text(
-                "Prices sourced from the UK Government Fuel Finder scheme under the Open Government Licence. Data is presented without modification.",
+                "Prices sourced from the UK Government's Fuel Finder scheme " +
+                    "(gov.uk/government/collections/fuel-finder) under the Open Government " +
+                    "Licence. Data is presented without modification. Fuel Tracker UK is an " +
+                    "independent app and is not affiliated with or endorsed by HM Government.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.padding(16.dp, 0.dp, 16.dp, 16.dp),

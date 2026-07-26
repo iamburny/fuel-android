@@ -303,7 +303,10 @@ fun NearbyScreen(
                             LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                                 item {
                                     Text(
-                                        "Prices sourced from the UK Government Fuel Finder scheme. Tap ⚠ to report incorrect data.",
+                                        "Prices: UK Gov Fuel Finder scheme " +
+                                            "(gov.uk/government/collections/fuel-finder). " +
+                                            "Independent app, not government-affiliated. " +
+                                            "Tap ⚠ to report incorrect data.",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.outline,
                                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
