@@ -116,7 +116,10 @@ fun NearbyScreen(
                     centerLng = userLng,
                     zoomLevel = 12f,
                     markers = mapMarkers,
-                    onMarkerClick = onStationClick,
+                    onMarkerClick = { id ->
+                        viewModel.trackStationClick(id, "map")
+                        onStationClick(id)
+                    },
                     recenterKey = state.cameraRecenterToken,
                     onCameraIdle = { bounds -> viewModel.loadStationsInBounds(bounds) },
                     showMyLocation = true,
@@ -315,6 +318,7 @@ fun NearbyScreen(
 
                                 items(state.stations, key = { it.id }) { station ->
                                     StationRow(station, state.selectedFuelType) {
+                                        viewModel.trackStationClick(station.id, "list")
                                         onStationClick(station.id)
                                     }
                                 }

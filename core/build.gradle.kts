@@ -89,6 +89,14 @@ dependencies {
     // Feature flags — self-hosted Unleash (Frontend API client, safe to embed client-side)
     implementation("io.getunleash:unleash-android:1.3.0")
 
+    // Analytics (GA4 via Firebase) — lives here, not just :app, so AppAnalytics is injectable
+    // from :core's own screens (e.g. the Android Auto UI) as well as :app's, same reasoning as
+    // FeatureFlags above. google-services.json / the google-services plugin stay :app-only
+    // (that's what ties the Firebase project to :app's applicationId); the SDK classes just need
+    // to be on this module's classpath to be usable once Firebase initializes at process start.
+    implementation(platform("com.google.firebase:firebase-bom:33.6.0"))
+    implementation("com.google.firebase:firebase-analytics-ktx")
+
     // Car App Library — platform-agnostic core (Screen/Session/CarAppService/model.*).
     // Platform-specific artifacts (app-projected, app-automotive) are added by the
     // consuming :app / :automotive modules.

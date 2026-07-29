@@ -13,6 +13,7 @@ import uk.co.fuelprices.data.api.PriceHistoryPoint
 import uk.co.fuelprices.data.api.StationDto
 import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferencesStore
+import uk.co.fuelprices.util.AppAnalytics
 import uk.co.fuelprices.util.LocationHelper
 import uk.co.fuelprices.util.estimateDriveCostPounds
 import uk.co.fuelprices.util.haversineMiles
@@ -36,6 +37,7 @@ class DetailViewModel @Inject constructor(
     private val repo: FuelRepository,
     private val locationHelper: LocationHelper,
     private val preferencesStore: UserPreferencesStore,
+    private val analytics: AppAnalytics,
 ) : ViewModel() {
 
     private val stationId: Int = savedState.get<Int>("stationId") ?: 0
@@ -103,9 +105,11 @@ class DetailViewModel @Inject constructor(
                 val current = _state.value
                 if (current.isFavourite && current.favouriteId != null) {
                     repo.removeFavourite(current.favouriteId)
+                    analytics.trackEvent("remove_from_favourites", mapOf("station_id" to stationId))
                     _state.value = current.copy(isFavourite = false, favouriteId = null)
                 } else {
                     val fav = repo.addFavourite(stationId)
+                    analytics.trackEvent("add_to_favourites", mapOf("station_id" to stationId))
                     _state.value = current.copy(isFavourite = true, favouriteId = fav.id)
                 }
             } catch (_: Exception) { }

@@ -108,7 +108,7 @@ fun FavouritesScreen(
                                 state = rememberSwipeToDismissBoxState(
                                     confirmValueChange = { value ->
                                         if (value == SwipeToDismissBoxValue.EndToStart) {
-                                            viewModel.removeFavourite(fav.id)
+                                            viewModel.removeFavourite(fav.id, fav.stationId)
                                             true
                                         } else false
                                     }
@@ -128,7 +128,10 @@ fun FavouritesScreen(
                                 enableDismissFromStartToEnd = false,
                             ) {
                                 ListItem(
-                                    modifier = Modifier.clickable { onStationClick(fav.stationId) },
+                                    modifier = Modifier.clickable {
+                                        viewModel.trackStationClick(fav.stationId)
+                                        onStationClick(fav.stationId)
+                                    },
                                     headlineContent = {
                                         Text("Station #${fav.stationId}", fontWeight = FontWeight.Medium)
                                     },

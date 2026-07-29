@@ -16,6 +16,7 @@ import uk.co.fuelprices.data.api.PriceDto
 import uk.co.fuelprices.data.api.StationDto
 import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferencesStore
+import uk.co.fuelprices.util.AppAnalytics
 import uk.co.fuelprices.util.LocationHelper
 import uk.co.fuelprices.util.haversineMiles
 import javax.inject.Inject
@@ -52,6 +53,7 @@ class NearbyViewModel @Inject constructor(
     private val repo: FuelRepository,
     private val locationHelper: LocationHelper,
     private val preferencesStore: UserPreferencesStore,
+    private val analytics: AppAnalytics,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(NearbyUiState())
@@ -195,6 +197,7 @@ class NearbyViewModel @Inject constructor(
     }
 
     fun setFuelType(type: String) {
+        analytics.trackEvent("select_fuel_type", mapOf("fuel_type" to type))
         _state.value = _state.value.copy(selectedFuelType = type)
         // Nearby mode already has every fuel type's prices cached/loaded — just re-filter for
         // display. Cheapest mode ranks server-side per fuel type, so that genuinely needs a
@@ -210,6 +213,7 @@ class NearbyViewModel @Inject constructor(
     }
 
     fun setMode(mode: ListMode) {
+        analytics.trackEvent("select_mode", mapOf("mode" to mode.name.lowercase()))
         _state.value = _state.value.copy(mode = mode, searchQuery = "")
         searchJob?.cancel()
         reload()
@@ -225,6 +229,9 @@ class NearbyViewModel @Inject constructor(
         }
         searchJob = viewModelScope.launch {
             delay(400)
+            // Only reached once the query has settled (a newer keystroke cancels this job before
+            // getting here), so this fires once per search rather than once per character typed.
+            analytics.trackEvent("search", mapOf("search_term" to query))
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
                 val response = repo.searchStations(query)
@@ -233,6 +240,16 @@ class NearbyViewModel @Inject constructor(
                 _state.value = _state.value.copy(isLoading = false, error = e.message)
             }
         }
+    }
+
+    /** Called by NearbyScreen at each station-click site (map marker / list row) — kept in the
+     *  ViewModel (rather than firing analytics straight from the Composable) so it stays testable
+     *  and consistent with how every other tracked interaction here goes through analytics. */
+    fun trackStationClick(stationId: Int, source: String) {
+        analytics.trackEvent(
+            "select_station",
+            mapOf("station_id" to stationId, "fuel_type" to _state.value.selectedFuelType, "source" to source),
+        )
     }
 
     fun loadCheapest() {

@@ -2,6 +2,7 @@ package uk.co.fuelprices.di
 
 import android.content.Context
 import androidx.room.Room
+import com.google.firebase.analytics.FirebaseAnalytics
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import dagger.Module
 import dagger.Provides
@@ -97,4 +98,9 @@ object AppModule {
                 .clientKey(BuildConfig.UNLEASH_CLIENT_KEY)
                 .build(),
         )
+
+    @Provides
+    @Singleton
+    fun provideFirebaseAnalytics(@ApplicationContext context: Context): FirebaseAnalytics =
+        FirebaseAnalytics.getInstance(context)
 }

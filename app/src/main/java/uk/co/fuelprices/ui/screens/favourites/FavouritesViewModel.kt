@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import uk.co.fuelprices.data.api.AlertSubscriptionDto
 import uk.co.fuelprices.data.api.FavouriteDto
 import uk.co.fuelprices.data.repository.FuelRepository
+import uk.co.fuelprices.util.AppAnalytics
 import uk.co.fuelprices.util.LocationHelper
 import javax.inject.Inject
 
@@ -27,6 +28,7 @@ data class FavouritesUiState(
 class FavouritesViewModel @Inject constructor(
     private val repo: FuelRepository,
     private val locationHelper: LocationHelper,
+    private val analytics: AppAnalytics,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(FavouritesUiState())
@@ -73,6 +75,7 @@ class FavouritesViewModel @Inject constructor(
                     radiusMiles = radiusMiles,
                     fuelType = fuelType,
                 )
+                analytics.trackEvent("create_alert", mapOf("fuel_type" to fuelType, "radius_miles" to radiusMiles))
                 _state.value = _state.value.copy(
                     creatingAlert = false,
                     alerts = listOf(sub) + _state.value.alerts,
@@ -96,16 +99,21 @@ class FavouritesViewModel @Inject constructor(
         }
     }
 
-    fun removeFavourite(id: Int) {
+    fun removeFavourite(id: Int, stationId: Int) {
         viewModelScope.launch {
             try {
                 repo.removeFavourite(id)
+                analytics.trackEvent("remove_from_favourites", mapOf("station_id" to stationId))
                 _state.value = _state.value.copy(
                     favourites = _state.value.favourites.filter { it.id != id }
                 )
             } catch (_: Exception) {
             }
         }
+    }
+
+    fun trackStationClick(stationId: Int) {
+        analytics.trackEvent("select_station", mapOf("station_id" to stationId, "source" to "favourites"))
     }
 
     fun clearMessage() {
