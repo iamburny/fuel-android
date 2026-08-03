@@ -52,9 +52,12 @@ class AppPreferencesViewModel @Inject constructor(
             currentOpenCount = count
             val pausedUntil = store.get().coffeePromptPausedUntilOpen
             val cadenceDue = (count - 1) % PROMPT_EVERY == 0 && count >= pausedUntil
-            // shared.buy-me-a-coffee (default true — preserves existing behaviour if Unleash is
-            // unreachable/unconfigured) gates the whole prompt, not just its cadence.
-            if (cadenceDue && featureFlags.isEnabled("shared.buy-me-a-coffee", default = true)) {
+            // default must be false, not true — see the comment on refreshFlags() in
+            // PreferencesViewModel for why (Unleash's Frontend API can't distinguish "genuinely
+            // off" from "unknown flag", both are just absent from the response either way, so
+            // isEnabled() always falls back to this argument for a disabled flag, not just an
+            // unreachable/misconfigured one).
+            if (cadenceDue && featureFlags.isEnabled("shared.buy-me-a-coffee", default = false)) {
                 _showCoffeePrompt.value = true
             }
         }

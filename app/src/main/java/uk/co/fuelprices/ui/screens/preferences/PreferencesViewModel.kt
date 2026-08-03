@@ -23,8 +23,9 @@ data class PreferencesUiState(
     val justSaved: Boolean = false,
     val isLoggedIn: Boolean = false,
     val email: String? = null,
-    // Default true: these flags gate pre-existing UI, so if Unleash is unreachable/unconfigured
-    // the app falls back to its prior (visible) behaviour rather than silently hiding it.
+    // Brief pre-first-evaluation placeholder only (collect() below fires ~immediately on init) —
+    // the real fail-safe value is the `default` passed to isEnabled() in refreshFlags(), which
+    // must be false: see the comment there for why.
     val showBuyMeCoffee: Boolean = true,
     val showAlsoAvailableOnWeb: Boolean = true,
 )
@@ -61,10 +62,19 @@ class PreferencesViewModel @Inject constructor(
         }
     }
 
+    // default must be false here, not true: the Android SDK talks to Unleash's Frontend API,
+    // which (unlike the Node client SDK fuel-web/fuel-api use) only ever returns *enabled*
+    // toggles — a flag that's genuinely turned off is indistinguishable from a name Unleash has
+    // never heard of, both simply absent from the response, so isEnabled() falls through to
+    // whatever `default` we pass in either case. Passing true here made these flags permanently
+    // stuck on regardless of the real server-side toggle state (confirmed by disassembling
+    // DefaultUnleash.isEnabled() — it does `cache.get(name)?.enabled ?: default`). false means an
+    // Unleash outage hides these cards rather than showing them, the opposite trade-off from the
+    // web app, but it's the only option that lets the toggle ever actually take effect on Android.
     private fun refreshFlags() {
         _state.value = _state.value.copy(
-            showBuyMeCoffee = featureFlags.isEnabled("shared.buy-me-a-coffee", default = true),
-            showAlsoAvailableOnWeb = featureFlags.isEnabled("fuel-android.also-available-on-web", default = true),
+            showBuyMeCoffee = featureFlags.isEnabled("shared.buy-me-a-coffee", default = false),
+            showAlsoAvailableOnWeb = featureFlags.isEnabled("fuel-android.also-available-on-web", default = false),
         )
     }
 

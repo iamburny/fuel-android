@@ -88,6 +88,13 @@ object AppModule {
     // multiple instances due to on-disk cache contention). An empty UNLEASH_CLIENT_KEY (no
     // local.properties entry yet) degrades the same way an unset MAPS_API_KEY does — flag
     // evaluations just fall back to their default, no crash.
+    //
+    // delayedInitialization(false): the SDK defaults this to true (caller starts polling manually
+    // via unleash.start() later, e.g. once some app-specific context is known). Nothing here ever
+    // called start(), so with the default the client never polled at all — isEnabled() was just
+    // silently returning its local `default` argument for every flag, forever. Confirmed by
+    // disassembling DefaultUnleash's constructor: it only calls start$default(...) when
+    // getDelayedInitialization() is false.
     @Provides
     @Singleton
     fun provideUnleashClient(@ApplicationContext context: Context): Unleash =
@@ -96,6 +103,7 @@ object AppModule {
             unleashConfig = UnleashConfig.newBuilder("fuel-android")
                 .proxyUrl(BuildConfig.UNLEASH_URL.trimEnd('/') + "/api/frontend")
                 .clientKey(BuildConfig.UNLEASH_CLIENT_KEY)
+                .delayedInitialization(false)
                 .build(),
         )
 
