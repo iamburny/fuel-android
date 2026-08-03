@@ -81,25 +81,19 @@ class FuelRepository @Inject constructor(
     }
 
     /**
-     * Stations within an exact lat/lng box (a map viewport) — cache-first via the same DAO
-     * bounding-box query [getNearbyStations] uses internally, network fallback via the bounds
-     * endpoint. Unlike [getNearbyStations], a stale-cache fallback here stays scoped to the box
-     * (via [freshAfter] = 0) rather than [FuelDatabase]'s `getAllStations()` — that would return
-     * arbitrary stations unrelated to the dragged viewport.
+     * Stations within an exact lat/lng box (a map viewport) — always hits the network: every call
+     * here comes from a genuine drag to a genuinely new box, so unlike [getNearbyStations] there's
+     * no repeat-request case worth short-circuiting. (An earlier cache-first version checked for
+     * *any* fresh cached station inside the new box before hitting the network — since a drag's
+     * new box nearly always overlaps stations already cached from an earlier load elsewhere, that
+     * almost always found a hit and skipped the network call entirely, silently hiding whatever
+     * was newly visible at the box's edges.) Network failure still falls back to cache, scoped to
+     * the box (via freshAfter = 0) rather than [FuelDatabase]'s `getAllStations()` — that would
+     * return arbitrary stations unrelated to the dragged viewport.
      */
     suspend fun getStationsInBounds(
         minLat: Double, maxLat: Double, minLng: Double, maxLng: Double,
-        forceRefresh: Boolean = false,
     ): StationListResponse {
-        val freshAfter = System.currentTimeMillis() - CACHE_TTL_MILLIS
-        if (!forceRefresh) {
-            val cached = dao.getFreshStationsNear(minLat, maxLat, minLng, maxLng, freshAfter)
-                .map { it.toDto(originLat = null, originLng = null) }
-            if (cached.isNotEmpty()) {
-                return StationListResponse(count = cached.size, stations = cached)
-            }
-        }
-
         return try {
             val response = api.getStationsInBounds(minLat, maxLat, minLng, maxLng)
             recordApiSuccess()
