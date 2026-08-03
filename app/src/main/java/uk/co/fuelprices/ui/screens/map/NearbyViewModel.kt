@@ -46,6 +46,10 @@ data class NearbyUiState(
     // True after repeated back-to-back connection failures — drives a graceful "can't reach the
     // server" banner. Clears automatically on the next successful fetch.
     val apiUnreachable: Boolean = false,
+    // True while a drag-triggered viewport fetch is in flight. Drives a thin top-of-map progress
+    // bar — the old pins stay on screen throughout (viewportStations is only replaced once the
+    // new response lands), so this is purely a "something's happening" signal, not a data swap.
+    val isLoadingViewport: Boolean = false,
 )
 
 @HiltViewModel
@@ -172,7 +176,7 @@ class NearbyViewModel @Inject constructor(
     fun loadStationsInBounds(bounds: LatLngBounds) {
         boundsJob?.cancel()
         boundsJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isOffGpsCenter = true)
+            _state.value = _state.value.copy(isOffGpsCenter = true, isLoadingViewport = true)
             try {
                 val response = repo.getStationsInBounds(
                     minLat = bounds.southwest.latitude, maxLat = bounds.northeast.latitude,
@@ -182,6 +186,8 @@ class NearbyViewModel @Inject constructor(
             } catch (e: Exception) {
                 // Keep showing whatever was already on the map rather than clearing pins on a
                 // transient network failure mid-drag.
+            } finally {
+                _state.value = _state.value.copy(isLoadingViewport = false)
             }
         }
     }
@@ -192,6 +198,7 @@ class NearbyViewModel @Inject constructor(
         _state.value = _state.value.copy(
             viewportStations = null,
             isOffGpsCenter = false,
+            isLoadingViewport = false,
             cameraRecenterToken = _state.value.cameraRecenterToken + 1,
         )
     }

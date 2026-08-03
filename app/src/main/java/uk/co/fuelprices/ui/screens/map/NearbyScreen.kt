@@ -130,6 +130,17 @@ fun NearbyScreen(
                 }
             }
 
+            // Thin browser-style progress bar while a drag-triggered viewport reload is in
+            // flight — the pins themselves don't disappear (old ones stay until the new response
+            // lands), so without this the long pause after a drag reads as the app being stuck.
+            if (state.isLoadingViewport) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth(),
+                )
+            }
+
             // Currently filtered fuel type, always visible regardless of panel state. Tapping it
             // cycles to the next fuel type — a quick way to flip through prices without opening
             // the search panel's chip row.
