@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import uk.co.fuelprices.data.api.*
+import uk.co.fuelprices.ui.components.DataAttributionNotice
 import uk.co.fuelprices.ui.components.PriceLineChart
 import uk.co.fuelprices.ui.components.FuelMapView
 import uk.co.fuelprices.ui.components.MapMarker
@@ -286,34 +287,10 @@ fun DetailScreen(
 
             HorizontalDivider()
 
-            // Compliance: discrepancy report link (required by Fair Use Policy).
-            // The specific /report-discrepancy path 404s (confirmed both here and as the
-            // backend's own configured default) — points at the working base domain until
-            // there's a real report page to link to.
-            TextButton(
-                onClick = {
-                    val url = "https://www.fuel-finder.service.gov.uk/"
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                },
-                modifier = Modifier.padding(16.dp),
-            ) {
-                Icon(Icons.Default.Warning, null, Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Report a price discrepancy")
-            }
-
-            // Compliance: data notice — names the official gov.uk source and states we're an
-            // independent, unaffiliated app (Google Play Misleading Claims policy requires a
-            // clear source link + non-affiliation disclaimer for apps showing government data).
-            Text(
-                "Prices sourced from the UK Government's Fuel Finder scheme " +
-                    "(gov.uk/government/collections/fuel-finder) under the Open Government " +
-                    "Licence. Data is presented without modification. Fuel Tracker UK is an " +
-                    "independent app and is not affiliated with or endorsed by HM Government.",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(16.dp, 0.dp, 16.dp, 16.dp),
-            )
+            // Compliance: discrepancy report link (required by Fair Use Policy) plus a real,
+            // tappable link to the official gov.uk source (required by the Misleading Claims
+            // policy — a plain-text mention of "gov.uk/..." is not an accessible link).
+            DataAttributionNotice(modifier = Modifier.padding(top = 8.dp))
         }
     }
 }

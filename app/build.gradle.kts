@@ -41,8 +41,8 @@ android {
         applicationId = "uk.fueltracker.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.1.4"
+        versionCode = 6
+        versionName = "0.1.5"
 
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
@@ -79,6 +79,9 @@ android {
             // Use the release-restricted Maps key for release builds (debug builds keep the
             // defaultConfig key above).
             manifestPlaceholders["MAPS_API_KEY"] = mapsApiKeyRelease
+            ndk {
+                debugSymbolLevel = "FULL"
+            }
         }
     }
 

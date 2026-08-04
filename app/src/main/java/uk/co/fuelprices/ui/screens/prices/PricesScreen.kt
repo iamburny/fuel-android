@@ -1,7 +1,5 @@
 package uk.co.fuelprices.ui.screens.prices
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -11,14 +9,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.LocalFireDepartment
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -26,6 +22,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import uk.co.fuelprices.data.api.FuelTypes
 import uk.co.fuelprices.data.api.NationalAverageDto
 import uk.co.fuelprices.data.api.TrendPoint
+import uk.co.fuelprices.ui.components.DEFAULT_DATA_NOTICE
+import uk.co.fuelprices.ui.components.DataAttributionNotice
 import uk.co.fuelprices.ui.components.PriceLineChart
 import uk.co.fuelprices.ui.theme.fuelColor
 import uk.co.fuelprices.ui.theme.fuelLabel
@@ -37,7 +35,6 @@ fun PricesScreen(
     viewModel: PricesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    val context = LocalContext.current
 
     Scaffold(
         topBar = {
@@ -157,33 +154,14 @@ fun PricesScreen(
             Spacer(Modifier.height(16.dp))
             HorizontalDivider()
 
-            // Compliance. Note: the backend's own discrepancyReportUrl value is the same
-            // /report-discrepancy path that 404s (confirmed directly) — using the working base
-            // domain instead until there's a real report page to link to.
-            TextButton(
-                onClick = {
-                    val url = "https://www.fuel-finder.service.gov.uk/"
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                },
-                modifier = Modifier.padding(16.dp),
-            ) {
-                Icon(Icons.Default.Warning, null, Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Report a price discrepancy")
-            }
-
-            Text(
-                // Normally comes from the API's data_notice field (src/services/compliance.ts) —
-                // this fallback matches it in case that field is ever blank.
-                state.dataNotice.ifBlank {
-                    "Prices sourced from the UK Government's Fuel Finder scheme " +
-                        "(gov.uk/government/collections/fuel-finder) under the Open Government " +
-                        "Licence. Data is presented without modification. Fuel Tracker UK is an " +
-                        "independent app and is not affiliated with or endorsed by HM Government."
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(16.dp, 0.dp, 16.dp, 16.dp),
+            // Compliance: discrepancy report link, plus a real, tappable link to the official
+            // gov.uk source (required by the Misleading Claims policy — a plain-text mention of
+            // "gov.uk/..." is not an accessible link). The notice text normally comes from the
+            // API's data_notice field (src/services/compliance.ts) — this fallback matches it
+            // in case that field is ever blank.
+            DataAttributionNotice(
+                modifier = Modifier.padding(top = 8.dp),
+                noticeText = state.dataNotice.ifBlank { DEFAULT_DATA_NOTICE },
             )
         }
     }

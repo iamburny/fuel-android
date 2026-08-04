@@ -27,6 +27,7 @@ import uk.co.fuelprices.data.api.FuelTypes
 import uk.co.fuelprices.data.api.StationDto
 import uk.co.fuelprices.ui.components.AnnouncementBanner
 import uk.co.fuelprices.ui.components.BrandTitle
+import uk.co.fuelprices.ui.components.DataAttributionNotice
 import uk.co.fuelprices.ui.components.FuelMapView
 import uk.co.fuelprices.ui.components.MapMarker
 import uk.co.fuelprices.ui.theme.fuelColor
@@ -316,15 +317,11 @@ fun NearbyScreen(
                         } else {
                             LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                                 item {
-                                    Text(
-                                        "Prices: UK Gov Fuel Finder scheme " +
-                                            "(gov.uk/government/collections/fuel-finder). " +
-                                            "Independent app, not government-affiliated. " +
-                                            "Tap ⚠ to report incorrect data.",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.outline,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                                    )
+                                    // Compliance: real, tappable link to the official gov.uk
+                                    // source (required by the Misleading Claims policy — a
+                                    // plain-text mention of "gov.uk/..." is not an accessible
+                                    // link), plus the discrepancy-report action it referred to.
+                                    DataAttributionNotice()
                                 }
 
                                 items(state.stations, key = { it.id }) { station ->
