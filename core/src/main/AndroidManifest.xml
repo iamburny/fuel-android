@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="androidx.car.app.MAP_TEMPLATES" />
+    <!-- Required by FirebaseAnalytics.getInstance() (AppModule) — surfaced as a lint error only
+         once compileSdk 36's permission metadata picked this up; app-release.aab shipping without
+         it did work, but this is the correct fix rather than suppressing the check. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application android:networkSecurityConfig="@xml/network_security_config">
 

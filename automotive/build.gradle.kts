@@ -7,12 +7,12 @@ plugins {
 
 android {
     namespace = "uk.co.fuelprices.automotive"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "uk.co.fuelprices"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
     }

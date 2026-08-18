@@ -35,14 +35,14 @@ val hasReleaseKeystore = keystoreProperties.getProperty("storeFile") != null
 
 android {
     namespace = "uk.co.fuelprices"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "uk.fueltracker.app"
         minSdk = 29
-        targetSdk = 35
-        versionCode = 6
-        versionName = "0.1.5"
+        targetSdk = 36
+        versionCode = 7
+        versionName = "0.1.6"
 
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")

@@ -25,7 +25,7 @@ android {
     // Distinct from :app's / :automotive's namespace to avoid R-class/BuildConfig
     // collisions on their compile classpath; Kotlin package names are unaffected.
     namespace = "uk.co.fuelprices.core"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 26
