@@ -51,7 +51,15 @@ class FavouritesViewModel @Inject constructor(
                     alerts = alerts,
                 )
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = e.message)
+                // A 401 here means the OkHttp interceptor (AppModule) has already cleared the
+                // stored token — there's no refresh mechanism to retry with, so this is now
+                // functionally a signed-out session. Route there instead of surfacing the raw
+                // "HTTP 401" exception message.
+                if (!repo.isLoggedIn()) {
+                    _state.value = FavouritesUiState(isLoading = false, isLoggedIn = false)
+                } else {
+                    _state.value = _state.value.copy(isLoading = false, error = e.message)
+                }
             }
         }
     }
@@ -82,7 +90,13 @@ class FavouritesViewModel @Inject constructor(
                     message = "Alert created — we'll notify you of nearby drops.",
                 )
             } catch (e: Exception) {
-                _state.value = _state.value.copy(creatingAlert = false, error = e.message)
+                // Same reasoning as load()'s catch — a 401 mid-session means the token's already
+                // been cleared, so drop straight to the signed-out screen instead of the raw error.
+                if (!repo.isLoggedIn()) {
+                    _state.value = FavouritesUiState(isLoading = false, isLoggedIn = false)
+                } else {
+                    _state.value = _state.value.copy(creatingAlert = false, error = e.message)
+                }
             }
         }
     }

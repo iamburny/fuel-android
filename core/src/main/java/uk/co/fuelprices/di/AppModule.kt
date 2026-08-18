@@ -51,6 +51,18 @@ object AppModule {
                 }
                 chain.proceed(request)
             }
+            // The backend issues a 24h JWT with no refresh token/endpoint at all — once it
+            // expires (or the account's deleted, etc.) every authenticated call 401s forever,
+            // since nothing else ever clears the stored token. Drop it here so isLoggedIn() flips
+            // to false right away and screens like Favourites show their normal signed-out state
+            // instead of a raw "HTTP 401" once the exception reaches them.
+            .addInterceptor { chain ->
+                val response = chain.proceed(chain.request())
+                if (response.code == 401) {
+                    kotlinx.coroutines.runBlocking { tokenStore.clear() }
+                }
+                response
+            }
             .addInterceptor(
                 HttpLoggingInterceptor().apply {
                     level = if (BuildConfig.DEBUG)
