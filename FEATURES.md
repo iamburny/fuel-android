@@ -55,6 +55,8 @@ Find fuel stations near you on a live map, with a searchable/filterable list.
 - **Fuel-type pill** (top-right) always shows the current fuel type; tap to cycle through all six.
 - **Drag to explore:** panning the map loads stations for the newly visible viewport (pins update
   to the dragged area). The bottom list stays anchored to your GPS location regardless of drag.
+  The dragged-to position and zoom are remembered — opening a station's Detail screen and coming
+  back restores the map exactly where you left it, rather than snapping back to GPS.
 - **Recenter button** (bottom-left) appears once you've dragged away; tap to jump the camera back
   and restore the GPS pin set.
 - **Search / filter panel** (toggled top-right): a fixed "Search by name, postcode, or brand"

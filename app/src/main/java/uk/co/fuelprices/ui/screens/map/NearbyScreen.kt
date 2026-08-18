@@ -113,16 +113,19 @@ fun NearbyScreen(
             if (userLat != null && userLng != null) {
                 FuelMapView(
                     modifier = Modifier.fillMaxSize(),
-                    centerLat = userLat,
-                    centerLng = userLng,
-                    zoomLevel = 12f,
+                    // Falls back to the GPS fix only when the map hasn't been dragged (or has
+                    // just been recentered) — otherwise this restores wherever the user last left
+                    // the camera, including after navigating to Detail and back.
+                    centerLat = state.cameraLat ?: userLat,
+                    centerLng = state.cameraLng ?: userLng,
+                    zoomLevel = state.cameraZoom,
                     markers = mapMarkers,
                     onMarkerClick = { id ->
                         viewModel.trackStationClick(id, "map")
                         onStationClick(id)
                     },
                     recenterKey = state.cameraRecenterToken,
-                    onCameraIdle = { bounds -> viewModel.loadStationsInBounds(bounds) },
+                    onCameraIdle = { position, bounds -> viewModel.loadStationsInBounds(position, bounds) },
                     // Enabling the SDK's "my location" layer without the permission actually
                     // granted throws a SecurityException, so this must track the real permission
                     // state rather than being assumed true.

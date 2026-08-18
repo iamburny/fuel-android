@@ -2,6 +2,7 @@ package uk.co.fuelprices.ui.screens.map
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLngBounds
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -55,6 +56,14 @@ data class NearbyUiState(
     // bar — the old pins stay on screen throughout (viewportStations is only replaced once the
     // new response lands), so this is purely a "something's happening" signal, not a data swap.
     val isLoadingViewport: Boolean = false,
+    // Where the user last panned/zoomed the map to — kept here (rather than only in the map
+    // composable's own `rememberCameraPositionState`) so it survives navigating to Detail and
+    // back: Compose disposes that remembered state when NearbyScreen leaves composition, but this
+    // ViewModel is scoped to the Nearby nav-graph entry and outlives that. Null means "not dragged
+    // (yet)" — NearbyScreen falls back to userLat/userLng, i.e. the GPS position.
+    val cameraLat: Double? = null,
+    val cameraLng: Double? = null,
+    val cameraZoom: Float = 12f,
 )
 
 @HiltViewModel
@@ -179,11 +188,19 @@ class NearbyViewModel @Inject constructor(
         }
     }
 
-    /** Called when the map's drag gesture ends, with the newly visible viewport. */
-    fun loadStationsInBounds(bounds: LatLngBounds) {
+    /** Called when the map's drag gesture ends, with its new camera position and the newly
+     *  visible viewport — the former is stashed so a later return from Detail restores the map
+     *  here instead of snapping back to the GPS position. */
+    fun loadStationsInBounds(position: CameraPosition, bounds: LatLngBounds) {
         boundsJob?.cancel()
         boundsJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isOffGpsCenter = true, isLoadingViewport = true)
+            _state.value = _state.value.copy(
+                isOffGpsCenter = true,
+                isLoadingViewport = true,
+                cameraLat = position.target.latitude,
+                cameraLng = position.target.longitude,
+                cameraZoom = position.zoom,
+            )
             try {
                 val response = repo.getStationsInBounds(
                     minLat = bounds.southwest.latitude, maxLat = bounds.northeast.latitude,
@@ -207,6 +224,10 @@ class NearbyViewModel @Inject constructor(
             isOffGpsCenter = false,
             isLoadingViewport = false,
             cameraRecenterToken = _state.value.cameraRecenterToken + 1,
+            // Clears the stashed drag position so the map falls back to userLat/userLng again.
+            cameraLat = null,
+            cameraLng = null,
+            cameraZoom = 12f,
         )
     }
 

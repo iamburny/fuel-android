@@ -51,9 +51,10 @@ fun FuelMapView(
     // static single-marker map) can ignore it entirely; a null key only recenters once, on first
     // composition, which is harmless for a map that's never expected to move afterwards.
     recenterKey: Any? = null,
-    // Fires once a drag ends, with the map's new visible bounds — used to load pins for whatever
-    // area the user panned to. Not called for the initial camera placement, only genuine drags.
-    onCameraIdle: ((LatLngBounds) -> Unit)? = null,
+    // Fires once a drag ends, with the map's new camera position and visible bounds — used to
+    // load pins for whatever area the user panned to (and to remember where they left the camera).
+    // Not called for the initial camera placement, only genuine drags.
+    onCameraIdle: ((CameraPosition, LatLngBounds) -> Unit)? = null,
     // Enables the Google Maps live "my location" blue dot. Requires location permission to be
     // granted (the caller's responsibility). The SDK's own recenter button is hidden — callers
     // that want one (Nearby) provide their own FAB. Left false for static maps (e.g. Detail).
@@ -90,7 +91,7 @@ fun FuelMapView(
                 suppressNextIdle = false
             } else {
                 val bounds = cameraPositionState.projection?.visibleRegion?.latLngBounds
-                if (bounds != null) onCameraIdle?.invoke(bounds)
+                if (bounds != null) onCameraIdle?.invoke(cameraPositionState.position, bounds)
             }
         }
     }
