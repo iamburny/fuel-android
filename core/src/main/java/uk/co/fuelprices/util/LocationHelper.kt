@@ -26,6 +26,16 @@ import javax.inject.Singleton
 
 private const val TAG = "LocationHelper"
 
+/**
+ * Where the map centers when GPS is unavailable — permission denied, disabled, or a fix just
+ * hasn't arrived yet — instead of leaving the screen blank or crashing. Shared by every caller
+ * that needs a location fallback so there's a single place to change it.
+ */
+object DefaultLocation {
+    const val LAT = 51.75357815837036
+    const val LNG = -1.2571484832548643
+}
+
 @Singleton
 class LocationHelper @Inject constructor(@ApplicationContext private val context: Context) {
 

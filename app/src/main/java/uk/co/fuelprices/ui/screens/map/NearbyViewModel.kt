@@ -17,6 +17,7 @@ import uk.co.fuelprices.data.api.StationDto
 import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferencesStore
 import uk.co.fuelprices.util.AppAnalytics
+import uk.co.fuelprices.util.DefaultLocation
 import uk.co.fuelprices.util.LocationHelper
 import uk.co.fuelprices.util.haversineMiles
 import javax.inject.Inject
@@ -32,6 +33,10 @@ data class NearbyUiState(
     val searchQuery: String = "",
     val userLat: Double? = null,
     val userLng: Double? = null,
+    // Gates the map's "my location" blue dot — enabling it without the permission actually
+    // granted throws a SecurityException and crashes the app, so this must reflect the real
+    // permission state rather than being assumed true.
+    val hasLocationPermission: Boolean = false,
     val discrepancyReportUrl: String = "",
     val error: String? = null,
     // Stations for whatever map area the user last dragged to — null until the first drag, at
@@ -86,19 +91,21 @@ class NearbyViewModel @Inject constructor(
             _state.value = _state.value.copy(selectedFuelType = preferencesStore.get().fuelType)
 
             // Give the permission dialog a brief window to be answered before firing the first
-            // request — otherwise we load London (the fallback), render it, then immediately
+            // request — otherwise we load the fallback location, render it, then immediately
             // correct to the real location once permission lands, which reads as a jarring
             // flash. If permission's already granted (the common case for returning users) this
             // returns instantly. Capped at 3s so a slow response doesn't stall the screen.
             if (!locationHelper.hasPermission()) {
                 withTimeoutOrNull(3_000) { locationHelper.permissionGranted.first() }
             }
+            _state.value = _state.value.copy(hasLocationPermission = locationHelper.hasPermission())
             loadNearby()
             startLocationUpdates()
 
             // Keep listening in case permission lands after our short wait above (e.g. the
             // dialog took longer than 3s to answer, or it's granted later via Settings).
             locationHelper.permissionGranted.collect {
+                _state.value = _state.value.copy(hasLocationPermission = true)
                 loadNearby()
                 startLocationUpdates()
             }
@@ -147,8 +154,8 @@ class NearbyViewModel @Inject constructor(
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
                 val location = locationHelper.getCurrentLocation()
-                val lat = location?.latitude ?: 51.5074  // default: London
-                val lng = location?.longitude ?: -0.1278
+                val lat = location?.latitude ?: DefaultLocation.LAT
+                val lng = location?.longitude ?: DefaultLocation.LNG
 
                 // No fuelType here — the repository always caches full price data per station
                 // now (see FuelRepository), so switching the fuel filter chip doesn't need a

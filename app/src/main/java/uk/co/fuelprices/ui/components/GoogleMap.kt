@@ -25,6 +25,7 @@ import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
+import uk.co.fuelprices.util.DefaultLocation
 
 data class MapMarker(
     val lat: Double,
@@ -39,8 +40,8 @@ data class MapMarker(
 @Composable
 fun FuelMapView(
     modifier: Modifier = Modifier,
-    centerLat: Double = 51.5074,
-    centerLng: Double = -0.1278,
+    centerLat: Double = DefaultLocation.LAT,
+    centerLng: Double = DefaultLocation.LNG,
     zoomLevel: Float = 12f,
     markers: List<MapMarker> = emptyList(),
     onMarkerClick: ((Int) -> Unit)? = null,

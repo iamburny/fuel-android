@@ -123,7 +123,10 @@ fun NearbyScreen(
                     },
                     recenterKey = state.cameraRecenterToken,
                     onCameraIdle = { bounds -> viewModel.loadStationsInBounds(bounds) },
-                    showMyLocation = true,
+                    // Enabling the SDK's "my location" layer without the permission actually
+                    // granted throws a SecurityException, so this must track the real permission
+                    // state rather than being assumed true.
+                    showMyLocation = state.hasLocationPermission,
                 )
             } else {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

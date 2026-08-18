@@ -26,6 +26,7 @@ import androidx.navigation.navArgument
 import uk.co.fuelprices.ui.components.CoffeeSupportDialog
 import uk.co.fuelprices.ui.screens.auth.AuthScreen
 import uk.co.fuelprices.ui.screens.detail.DetailScreen
+import uk.co.fuelprices.ui.screens.diagnostics.DiagnosticsScreen
 import uk.co.fuelprices.ui.screens.favourites.FavouritesScreen
 import uk.co.fuelprices.ui.screens.heatmap.HeatmapScreen
 import uk.co.fuelprices.ui.screens.map.NearbyScreen
@@ -39,6 +40,7 @@ sealed class Screen(val route: String) {
     data object Heatmap : Screen("heatmap")
     data object Favourites : Screen("favourites")
     data object Preferences : Screen("preferences")
+    data object Diagnostics : Screen("diagnostics")
     data object Auth : Screen("auth")
     data object Detail : Screen("detail/{stationId}") {
         fun createRoute(stationId: Int) = "detail/$stationId"
@@ -144,7 +146,8 @@ fun FuelApp(
     // Hide bottom bar on full-screen destinations reached by pushing (not a bottom-nav tab)
     val showBottomBar = currentRoute != Screen.Detail.route &&
         currentRoute != Screen.Auth.route &&
-        currentRoute != Screen.Heatmap.route
+        currentRoute != Screen.Heatmap.route &&
+        currentRoute != Screen.Diagnostics.route
 
     CompositionLocalProvider(LocalUseLongFuelNames provides useLongFuelNames) {
         Scaffold(
@@ -212,7 +215,12 @@ fun FuelApp(
                 composable(Screen.Preferences.route) {
                     PreferencesScreen(
                         onSignIn = { navController.navigate(Screen.Auth.route) },
+                        onOpenDiagnostics = { navController.navigate(Screen.Diagnostics.route) },
                     )
+                }
+
+                composable(Screen.Diagnostics.route) {
+                    DiagnosticsScreen(onBack = { navController.popBackStack() })
                 }
 
                 composable(

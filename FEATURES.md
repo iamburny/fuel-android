@@ -46,8 +46,10 @@ on Nearby. Each tab preserves its own state when switching.
 Find fuel stations near you on a live map, with a searchable/filterable list.
 
 - **Live Google map** under the "Fuel Tracker UK" title bar, centred on your GPS at zoom 12. Until a location
-  resolves, a centred spinner shows (no fallback-location flash). If GPS is unavailable, falls
-  back to London.
+  resolves, a centred spinner shows (no fallback-location flash). If GPS is unavailable — no fix,
+  or location permission denied — falls back to a fixed default location (Oxford), and the map's
+  "my location" blue dot is only enabled when location permission is actually granted (enabling it
+  without the permission crashes the app).
 - **Station pins** coloured per the selected fuel type, each labelled with the cheapest price of
   that fuel type at the station (e.g. "129.9p") or "No price."
 - **Fuel-type pill** (top-right) always shows the current fuel type; tap to cycle through all six.

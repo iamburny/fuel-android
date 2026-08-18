@@ -2,6 +2,8 @@ package uk.co.fuelprices.ui.screens.preferences
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -17,8 +19,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import uk.co.fuelprices.BuildConfig
 import uk.co.fuelprices.data.api.FuelTypes
 import uk.co.fuelprices.ui.theme.ThemeMode
 
@@ -26,6 +30,7 @@ import uk.co.fuelprices.ui.theme.ThemeMode
 @Composable
 fun PreferencesScreen(
     onSignIn: () -> Unit = {},
+    onOpenDiagnostics: () -> Unit = {},
     viewModel: PreferencesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -254,6 +259,41 @@ fun PreferencesScreen(
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }
+
+            // Hidden entry point to the Diagnostics screen — mirrors Android's own "tap the
+            // build number 7 times" developer-options gesture. Not discoverable by accident, but
+            // easy to talk a reporting user through over chat/email when something like the map
+            // not loading needs more device info than a screenshot can show.
+            var versionTapCount by remember { mutableStateOf(0) }
+            var lastTapAt by remember { mutableStateOf(0L) }
+            Text(
+                "Fuel Tracker UK v${BuildConfig.VERSION_NAME}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 24.dp)
+                    .clickable {
+                        val now = System.currentTimeMillis()
+                        // Scattered taps more than 2s apart don't accumulate, same as stray
+                        // taps elsewhere in a session shouldn't eventually trip this by accident.
+                        versionTapCount = if (now - lastTapAt > 2_000L) 1 else versionTapCount + 1
+                        lastTapAt = now
+                        val remaining = 7 - versionTapCount
+                        when {
+                            remaining <= 0 -> {
+                                versionTapCount = 0
+                                onOpenDiagnostics()
+                            }
+                            remaining <= 3 -> Toast.makeText(
+                                context,
+                                "$remaining more tap${if (remaining == 1) "" else "s"} for diagnostics",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    },
+            )
         }
     }
 }
