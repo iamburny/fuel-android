@@ -3,6 +3,7 @@ package uk.co.fuelprices.ui.screens.diagnostics
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.content.pm.Signature
 import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -74,7 +75,7 @@ class DiagnosticsViewModel @Inject constructor(
         add("Device location services" to if (isSystemLocationEnabled()) "on" else "off")
         add("Network" to networkStatus())
         add("Maps API key configured" to mapsApiKeyStatus())
-        add("App signing certificate (SHA-1)" to signingCertificateSha1())
+        addAll(signingCertificateLines())
     }
 
     private fun playServicesStatus(): String {
@@ -141,20 +142,48 @@ class DiagnosticsViewModel @Inject constructor(
         return "present (fingerprint $fingerprint)"
     }
 
-    /** The certificate this exact running build was signed with — compare against what's
-     *  registered as an Android app restriction on the Maps API key in Cloud Console. */
-    private fun signingCertificateSha1(): String = try {
-        val packageInfo = context.packageManager.getPackageInfo(
+    /**
+     * SHA-1(s) of the certificate(s) this running build is signed with — compare against the
+     * Android-app restriction registered on the Maps API key in Cloud Console.
+     *
+     * With **Play App Signing + signing-key rotation** the installed APK carries a *lineage* of
+     * certificates, not one. `apkContentsSigners.firstOrNull()` (what this screen used to report)
+     * returns only a single member of that lineage, and on a rotated app that is often *not* the
+     * cert Google actually validates API calls against — so the value shown here could disagree
+     * with the SHA-1 the Maps SDK demands, sending support down the wrong path. We therefore
+     * surface the current signer *and* the full rotation lineage, so whichever cert a given Google
+     * service checks is always visible. When a Maps auth failure is in logcat, the fingerprint it
+     * prints (`Google Android Maps SDK: Authorization failure … Android Application (…): <SHA-1>`)
+     * is the authoritative one to register.
+     */
+    private fun signingCertificateLines(): List<Pair<String, String>> = try {
+        val signingInfo = context.packageManager.getPackageInfo(
             context.packageName,
             PackageManager.GET_SIGNING_CERTIFICATES,
-        )
-        val signature = packageInfo.signingInfo?.apkContentsSigners?.firstOrNull()
-        signature?.let {
-            MessageDigest.getInstance("SHA-1")
-                .digest(it.toByteArray())
-                .joinToString(":") { byte -> "%02X".format(byte) }
-        } ?: "unavailable"
+        ).signingInfo ?: return listOf("App signing certificate (SHA-1)" to "unavailable")
+
+        // For a rotated single-signer app the lineage lives in signingCertificateHistory (ordered
+        // oldest → current); apkContentsSigners holds the concurrent signer(s). Union both so no
+        // lineage member is dropped, regardless of OS-version quirks in which accessor is populated.
+        val current = signingInfo.apkContentsSigners?.toList().orEmpty()
+        val history = signingInfo.signingCertificateHistory?.toList().orEmpty()
+        val currentSha1 = (history.lastOrNull() ?: current.firstOrNull())?.let(::sha1Hex)
+            ?: return listOf("App signing certificate (SHA-1)" to "unavailable")
+
+        val lineage = (history + current).map(::sha1Hex).distinct()
+        buildList {
+            add("App signing certificate (SHA-1)" to currentSha1)
+            // Only meaningful once the key has been rotated; a single-cert app adds no noise.
+            if (lineage.size > 1) {
+                add("Signing cert lineage (SHA-1)" to lineage.joinToString("  |  "))
+            }
+        }
     } catch (_: Exception) {
-        "unavailable"
+        listOf("App signing certificate (SHA-1)" to "unavailable")
     }
+
+    private fun sha1Hex(signature: Signature): String =
+        MessageDigest.getInstance("SHA-1")
+            .digest(signature.toByteArray())
+            .joinToString(":") { "%02X".format(it) }
 }
