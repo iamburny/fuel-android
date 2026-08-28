@@ -24,6 +24,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import uk.co.fuelprices.ui.components.CoffeeSupportDialog
+import uk.co.fuelprices.ui.components.ReleaseNoticeDialog
 import uk.co.fuelprices.ui.screens.auth.AuthScreen
 import uk.co.fuelprices.ui.screens.detail.DetailScreen
 import uk.co.fuelprices.ui.screens.diagnostics.DiagnosticsScreen
@@ -114,6 +115,7 @@ fun FuelApp(
     val currentRoute = navBackStackEntry?.destination?.route
     val useLongFuelNames by appPreferencesViewModel.useLongFuelNames.collectAsState()
     val showCoffeePrompt by appPreferencesViewModel.showCoffeePrompt.collectAsState()
+    val releaseNotice by appPreferencesViewModel.releaseNotice.collectAsState()
     val context = LocalContext.current
 
     if (showCoffeePrompt) {
@@ -128,6 +130,20 @@ fun FuelApp(
                 }
             },
             onDismiss = { appPreferencesViewModel.onDismissCoffee() },
+        )
+    }
+
+    releaseNotice?.let { notice ->
+        ReleaseNoticeDialog(
+            content = notice,
+            onConfirm = {
+                appPreferencesViewModel.onDismissReleaseNotice(notice.dismissKey)
+                try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(notice.resolvedButtonUrl)))
+                } catch (_: Exception) {
+                }
+            },
+            onDismiss = { appPreferencesViewModel.onDismissReleaseNotice(notice.dismissKey) },
         )
     }
 

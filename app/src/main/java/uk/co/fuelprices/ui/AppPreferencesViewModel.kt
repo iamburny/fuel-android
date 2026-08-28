@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import uk.co.fuelprices.data.repository.UserPreferencesStore
+import uk.co.fuelprices.ui.components.ReleaseNoticeContent
 import uk.co.fuelprices.util.FeatureFlags
 import javax.inject.Inject
 
@@ -37,6 +38,9 @@ class AppPreferencesViewModel @Inject constructor(
     private val _showCoffeePrompt = MutableStateFlow(false)
     val showCoffeePrompt: StateFlow<Boolean> = _showCoffeePrompt.asStateFlow()
 
+    private val _releaseNotice = MutableStateFlow<ReleaseNoticeContent?>(null)
+    val releaseNotice: StateFlow<ReleaseNoticeContent?> = _releaseNotice.asStateFlow()
+
     // The open count at which the prompt is currently showing — used to compute the pause target.
     private var currentOpenCount = 0
 
@@ -60,7 +64,22 @@ class AppPreferencesViewModel @Inject constructor(
             if (cadenceDue && featureFlags.isEnabled("shared.buy-me-a-coffee", default = false)) {
                 _showCoffeePrompt.value = true
             }
+
+            if (featureFlags.isEnabled(ReleaseNoticeContent.FLAG_NAME, default = false)) {
+                val content = featureFlags.getVariantJson<ReleaseNoticeContent>(ReleaseNoticeContent.FLAG_NAME)
+                    ?: ReleaseNoticeContent()
+                if (content.dismissKey != store.get().dismissedReleaseNoticeKey) {
+                    _releaseNotice.value = content
+                }
+            }
         }
+    }
+
+    /** Fires for both the CTA tap and "Close" — a release notice doesn't need a distinct
+     *  acknowledged-vs-ignored state, just "don't show this exact content again." */
+    fun onDismissReleaseNotice(key: String) {
+        _releaseNotice.value = null
+        viewModelScope.launch { store.dismissReleaseNotice(key) }
     }
 
     /** CTA tapped: hide and pause the prompt for [PAUSE_OPENS] launches (caller opens the URL). */

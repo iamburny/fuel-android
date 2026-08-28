@@ -30,6 +30,9 @@ data class UserPreferences(
     /** Text of the last-dismissed announcement banner message — re-shows automatically if the
      *  flag's variant text changes (a new announcement), same behaviour as the web/admin banner. */
     val dismissedAnnouncementMessage: String? = null,
+    /** [uk.co.fuelprices.ui.components.ReleaseNoticeContent.dismissKey] of the last-dismissed
+     *  release notice — re-shows automatically if the flag's variant content changes. */
+    val dismissedReleaseNoticeKey: String? = null,
 ) {
     /** True once there's enough info to estimate a driving cost (see FuelCostCalculator). */
     val canEstimateDriveCost: Boolean get() = mpg != null && tankCapacityLitres != null
@@ -46,6 +49,7 @@ class UserPreferencesStore @Inject constructor(@ApplicationContext private val c
     private val appOpenCountKey = intPreferencesKey("app_open_count")
     private val coffeePromptPausedUntilKey = intPreferencesKey("coffee_prompt_paused_until")
     private val dismissedAnnouncementKey = stringPreferencesKey("dismissed_announcement_message")
+    private val dismissedReleaseNoticePrefKey = stringPreferencesKey("dismissed_release_notice_key")
 
     val preferences: Flow<UserPreferences> = context.userPreferencesDataStore.data.map { prefs ->
         UserPreferences(
@@ -57,6 +61,7 @@ class UserPreferencesStore @Inject constructor(@ApplicationContext private val c
             appOpenCount = prefs[appOpenCountKey] ?: 0,
             coffeePromptPausedUntilOpen = prefs[coffeePromptPausedUntilKey] ?: 0,
             dismissedAnnouncementMessage = prefs[dismissedAnnouncementKey],
+            dismissedReleaseNoticeKey = prefs[dismissedReleaseNoticePrefKey],
         )
     }
 
@@ -107,6 +112,14 @@ class UserPreferencesStore @Inject constructor(@ApplicationContext private val c
     suspend fun dismissAnnouncement(message: String) {
         context.userPreferencesDataStore.edit { prefs ->
             prefs[dismissedAnnouncementKey] = message
+        }
+    }
+
+    /** Records [key] as dismissed — the release notice stays hidden until the flag's variant
+     *  content changes to something else. */
+    suspend fun dismissReleaseNotice(key: String) {
+        context.userPreferencesDataStore.edit { prefs ->
+            prefs[dismissedReleaseNoticePrefKey] = key
         }
     }
 }

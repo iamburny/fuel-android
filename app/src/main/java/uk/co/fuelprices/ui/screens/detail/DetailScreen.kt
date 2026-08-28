@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.foundation.horizontalScroll
 import uk.co.fuelprices.data.api.*
 import uk.co.fuelprices.ui.components.DataAttributionNotice
 import uk.co.fuelprices.ui.components.PriceLineChart
@@ -268,21 +269,48 @@ fun DetailScreen(
             }
 
             // Price history line chart
-            if (state.priceHistory.isNotEmpty()) {
-                val historyFuel = state.station?.prices?.firstOrNull()?.fuelType ?: "E10"
+            if (station.prices.isNotEmpty()) {
                 Text(
                     "Price History (30 days)",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 4.dp),
                 )
-                PriceLineChart(
-                    values = state.priceHistory.map { it.pricePence },
-                    dates = state.priceHistory.map { it.reportedAt },
-                    lineColor = fuelColor(historyFuel),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                )
+
+                Row(
+                    Modifier
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FuelTypes.ALL.forEach { type ->
+                        FilterChip(
+                            selected = state.selectedFuelType == type,
+                            onClick = { viewModel.setFuelType(type) },
+                            label = { Text(fuelLabel(type)) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = fuelColor(type),
+                                selectedLabelColor = Color.White,
+                            ),
+                        )
+                    }
+                }
+
+                if (state.priceHistory.isNotEmpty()) {
+                    PriceLineChart(
+                        values = state.priceHistory.map { it.pricePence },
+                        dates = state.priceHistory.map { it.reportedAt },
+                        lineColor = fuelColor(state.selectedFuelType ?: "E10"),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                } else {
+                    Text(
+                        "No price history available for this fuel type.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(16.dp),
+                    )
+                }
             }
 
             HorizontalDivider()

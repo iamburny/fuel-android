@@ -23,6 +23,7 @@ data class DetailUiState(
     val isLoading: Boolean = true,
     val station: StationDto? = null,
     val priceHistory: List<PriceHistoryPoint> = emptyList(),
+    val selectedFuelType: String? = null,
     val isFavourite: Boolean = false,
     val favouriteId: Int? = null,
     val nationalAverages: List<NationalAverageDto> = emptyList(),
@@ -54,7 +55,12 @@ class DetailViewModel @Inject constructor(
             _state.value = _state.value.copy(isLoading = true)
             try {
                 val station = repo.getStation(stationId)
-                val fuelType = station.prices.firstOrNull()?.fuelType ?: "E10"
+                val preferences = preferencesStore.get()
+                val fuelType = if (station.prices.any { it.fuelType == preferences.fuelType }) {
+                    preferences.fuelType
+                } else {
+                    station.prices.firstOrNull()?.fuelType ?: preferences.fuelType
+                }
                 val history = try {
                     repo.getPriceHistory(stationId, fuelType).history
                 } catch (_: Exception) { emptyList() }
@@ -69,7 +75,6 @@ class DetailViewModel @Inject constructor(
                 // which is only used there for savings-based sorting).
                 val averages = try { repo.getNationalAverages().averages } catch (_: Exception) { emptyList() }
 
-                val preferences = preferencesStore.get()
                 var distanceMiles: Double? = null
                 var driveCost: Double? = null
                 if (preferences.canEstimateDriveCost) {
@@ -87,6 +92,7 @@ class DetailViewModel @Inject constructor(
                     isLoading = false,
                     station = station,
                     priceHistory = history,
+                    selectedFuelType = fuelType,
                     isFavourite = existingFav != null,
                     favouriteId = existingFav?.id,
                     nationalAverages = averages,
@@ -96,6 +102,18 @@ class DetailViewModel @Inject constructor(
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoading = false, error = e.message)
             }
+        }
+    }
+
+    fun setFuelType(fuelType: String) {
+        val current = _state.value
+        if (current.selectedFuelType == fuelType) return
+        _state.value = current.copy(selectedFuelType = fuelType)
+        viewModelScope.launch {
+            val history = try {
+                repo.getPriceHistory(stationId, fuelType).history
+            } catch (_: Exception) { emptyList() }
+            _state.value = _state.value.copy(priceHistory = history)
         }
     }
 
