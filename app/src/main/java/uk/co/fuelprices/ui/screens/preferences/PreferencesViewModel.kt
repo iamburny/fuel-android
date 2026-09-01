@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import uk.co.fuelprices.data.api.PreferencesDto
 import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferencesStore
 import uk.co.fuelprices.util.FeatureFlags
@@ -145,9 +146,29 @@ class PreferencesViewModel @Inject constructor(
             useLongFuelNames = s.useLongFuelNames,
             themeMode = s.themeMode,
         )
+        pushPreferencesBestEffort()
         _state.value = _state.value.copy(justSaved = true)
         delay(1_500)
         _state.value = _state.value.copy(justSaved = false)
+    }
+
+    /** Pushes the just-saved preferences to the account, best-effort — only meaningful while
+     *  signed in; a signed-out change stays purely local until the next login's merge picks it up. */
+    private suspend fun pushPreferencesBestEffort() {
+        if (!repo.isLoggedIn()) return
+        val prefs = store.get()
+        try {
+            repo.updatePreferences(
+                PreferencesDto(
+                    fuelType = prefs.fuelType,
+                    mpg = prefs.mpg,
+                    tankCapacityLitres = prefs.tankCapacityLitres,
+                    useLongFuelNames = prefs.useLongFuelNames,
+                    themeMode = prefs.themeMode,
+                ),
+            )
+        } catch (_: Exception) {
+        }
     }
 
     private fun formatNumber(value: Double): String =

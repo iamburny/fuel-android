@@ -18,8 +18,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import uk.co.fuelprices.BuildConfig
+import uk.co.fuelprices.data.api.PreferencesDto
 import uk.co.fuelprices.data.repository.AuthException
 import uk.co.fuelprices.data.repository.FuelRepository
+import uk.co.fuelprices.data.repository.UserPreferencesStore
 import javax.inject.Inject
 import kotlin.coroutines.resume
 
@@ -37,6 +39,7 @@ data class AuthUiState(
 @HiltViewModel
 class AuthViewModel @Inject constructor(
     private val repo: FuelRepository,
+    private val preferencesStore: UserPreferencesStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AuthUiState())
@@ -89,6 +92,7 @@ class AuthViewModel @Inject constructor(
                 }
                 repo.login(s.email.trim(), s.password)
                 registerFcmToken()
+                syncPreferencesBestEffort()
                 _state.value = _state.value.copy(loading = false)
                 onSuccess()
             } catch (e: Exception) {
@@ -129,6 +133,7 @@ class AuthViewModel @Inject constructor(
                     val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
                     repo.loginWithGoogle(googleCredential.idToken, googleCredential.id)
                     registerFcmToken()
+                    syncPreferencesBestEffort()
                     _state.value = _state.value.copy(loading = false)
                     onSuccess()
                 } else {
@@ -163,6 +168,49 @@ class AuthViewModel @Inject constructor(
             }
             if (token != null) repo.registerFcmToken(token)
         } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * Reconciles this device's local preferences with the account's stored ones right after
+     * login: a field the account has already set wins over the local value; a field the account
+     * has never set (null) adopts this device's local value instead, seeding the account on
+     * first login. Best-effort — a failure here must not block sign-in, matching
+     * [registerFcmToken] above.
+     */
+    private suspend fun syncPreferencesBestEffort() {
+        try {
+            val remote = repo.getPreferences()
+            val local = preferencesStore.get()
+            val mergedFuelType = remote.fuelType ?: local.fuelType
+            val mergedMpg = remote.mpg ?: local.mpg
+            val mergedTankCapacityLitres = remote.tankCapacityLitres ?: local.tankCapacityLitres
+            val mergedUseLongFuelNames = remote.useLongFuelNames ?: local.useLongFuelNames
+            val mergedThemeMode = remote.themeMode ?: local.themeMode
+
+            preferencesStore.save(
+                fuelType = mergedFuelType,
+                mpg = mergedMpg,
+                tankCapacityLitres = mergedTankCapacityLitres,
+                useLongFuelNames = mergedUseLongFuelNames,
+                themeMode = mergedThemeMode,
+            )
+            // Pushes the reconciled set back — the part of this account's fields that were null
+            // (adopted from local just above) now get persisted server-side too.
+            try {
+                repo.updatePreferences(
+                    PreferencesDto(
+                        fuelType = mergedFuelType,
+                        mpg = mergedMpg,
+                        tankCapacityLitres = mergedTankCapacityLitres,
+                        useLongFuelNames = mergedUseLongFuelNames,
+                        themeMode = mergedThemeMode,
+                    ),
+                )
+            } catch (_: Exception) {
+            }
+        } catch (_: Exception) {
+            // Best-effort — account preferences fetch failing must not block sign-in.
         }
     }
 

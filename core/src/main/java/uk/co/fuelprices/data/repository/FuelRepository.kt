@@ -190,6 +190,10 @@ class FuelRepository @Inject constructor(
     /** Register this device's FCM token against the logged-in user (call after login). */
     suspend fun registerFcmToken(token: String) = api.updateFcmToken(token)
 
+    suspend fun getPreferences(): PreferencesDto = api.getPreferences()
+
+    suspend fun updatePreferences(body: PreferencesDto): PreferencesDto = api.updatePreferences(body)
+
     suspend fun logout() = tokenStore.clear()
 
     suspend fun isLoggedIn() = tokenStore.isLoggedIn()

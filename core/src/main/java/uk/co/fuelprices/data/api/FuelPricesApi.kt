@@ -86,6 +86,12 @@ interface FuelPricesApi {
     @POST("api/auth/fcm-token")
     suspend fun updateFcmToken(@Query("fcm_token") token: String)
 
+    @GET("api/auth/preferences")
+    suspend fun getPreferences(): PreferencesDto
+
+    @PUT("api/auth/preferences")
+    suspend fun updatePreferences(@Body body: PreferencesDto): PreferencesDto
+
     // ── Favourites ───────────────────────────────────────
 
     @GET("api/favourites/")

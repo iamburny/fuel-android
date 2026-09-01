@@ -258,6 +258,20 @@ data class TokenResponse(
 @Serializable
 data class UserResponse(val id: Int, val email: String)
 
+// ── Preferences ────────────────────────────────────────────
+
+/** GET/PUT api/auth/preferences. Every field is nullable — null means the account has never set
+ *  that field (vs. an explicit value), so client-side sync can tell "adopt this device's local
+ *  value" apart from "the account wants this cleared". */
+@Serializable
+data class PreferencesDto(
+    @SerialName("fuel_type") val fuelType: String? = null,
+    val mpg: Double? = null,
+    @SerialName("tank_capacity_litres") val tankCapacityLitres: Double? = null,
+    @SerialName("use_long_fuel_names") val useLongFuelNames: Boolean? = null,
+    @SerialName("theme_mode") val themeMode: String? = null,
+)
+
 // ── Favourites ───────────────────────────────────────────
 
 @Serializable
