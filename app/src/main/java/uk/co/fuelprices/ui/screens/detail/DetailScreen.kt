@@ -254,7 +254,8 @@ fun DetailScreen(
                         holidays.forEach { bh ->
                             val hours = when {
                                 bh.is24Hours == true -> "24 hours"
-                                bh.openTime != null && bh.closeTime != null -> "${bh.openTime} – ${bh.closeTime}"
+                                bh.openTime != null && bh.closeTime != null ->
+                                    "${formatOpeningTime(bh.openTime)} – ${formatOpeningTime(bh.closeTime)}"
                                 else -> "Closed"
                             }
                             ListItem(
@@ -331,6 +332,13 @@ fun DetailScreen(
     }
 }
 
+/** Strips a trailing :SS from an "HH:MM:SS" opening-hours time for display; free text some
+ *  stations report instead of a real time (e.g. "24 hrs") is returned unchanged. */
+private fun formatOpeningTime(value: String?): String {
+    if (value == null) return ""
+    return if (Regex("""^\d{1,2}:\d{2}:\d{2}$""").matches(value)) value.dropLast(3) else value
+}
+
 @Composable
 private fun OpeningHoursTable(days: UsualDaysDto) {
     val today = LocalDate.now().dayOfWeek
@@ -361,7 +369,8 @@ private fun OpeningHoursTable(days: UsualDaysDto) {
                 val hoursText = when {
                     hours == null -> "—"
                     hours.is24Hours == true -> "24 hours"
-                    hours.open != null && hours.close != null -> "${hours.open} – ${hours.close}"
+                    hours.open != null && hours.close != null ->
+                        "${formatOpeningTime(hours.open)} – ${formatOpeningTime(hours.close)}"
                     else -> "—"
                 }
                 Text(
