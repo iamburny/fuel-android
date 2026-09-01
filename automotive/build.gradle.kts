@@ -41,8 +41,8 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
 
     // Hilt DI
-    implementation("com.google.dagger:hilt-android:2.52")
-    ksp("com.google.dagger:hilt-compiler:2.52")
+    implementation("com.google.dagger:hilt-android:2.60.1")
+    ksp("com.google.dagger:hilt-compiler:2.60.1")
 
     // Android Automotive OS (Car App Library)
     implementation("androidx.car.app:app-automotive:1.7.0")
