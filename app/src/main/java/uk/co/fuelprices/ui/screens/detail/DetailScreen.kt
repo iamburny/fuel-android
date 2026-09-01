@@ -276,19 +276,27 @@ fun DetailScreen(
                     modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 4.dp),
                 )
 
+                // Scoped to what this station actually sells — showing all 6 unconditionally let
+                // you select a fuel type with no data at all, landing on the chart's empty state.
+                val availableFuelTypes = FuelTypes.ALL.filter { type -> station.prices.any { it.fuelType == type } }
                 Row(
                     Modifier
                         .horizontalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    FuelTypes.ALL.forEach { type ->
+                    availableFuelTypes.forEach { type ->
                         FilterChip(
                             selected = state.selectedFuelType == type,
                             onClick = { viewModel.setFuelType(type) },
                             label = { Text(fuelLabel(type)) },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = fuelColor(type),
+                                // Raw palette colour, not the theme-aware fuelColor() used for the
+                                // line chart below — this fill always has a fixed white label on
+                                // top, and fuelColor()'s dark-mode-lightened diesel values would
+                                // wash out against that fixed white text instead of the near-black
+                                // pump colour they're meant to replace only when used as text.
+                                selectedContainerColor = FuelTypes.color(type),
                                 selectedLabelColor = Color.White,
                             ),
                         )

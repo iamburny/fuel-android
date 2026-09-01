@@ -22,6 +22,7 @@ import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.MapUiSettings
+import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
@@ -103,35 +104,47 @@ fun FuelMapView(
         uiSettings = MapUiSettings(myLocationButtonEnabled = false),
     ) {
         markers.forEach { m ->
-            // Rendered as a small price chip instead of a default pin, so the price is visible
-            // directly on the map without needing to tap through to an info window.
-            MarkerComposable(
-                m.id ?: -1,
-                m.snippet ?: "",
-                state = MarkerState(position = LatLng(m.lat, m.lng)),
-                title = m.title,
-                onClick = {
-                    if (onMarkerClick != null && m.id != null) {
-                        onMarkerClick(m.id)
-                        true
-                    } else {
-                        false
-                    }
-                },
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = m.color ?: MaterialTheme.colorScheme.primary,
-                    border = BorderStroke(1.dp, Color.White),
-                    shadowElevation = 3.dp,
+            val onClick = {
+                if (onMarkerClick != null && m.id != null) {
+                    onMarkerClick(m.id)
+                    true
+                } else {
+                    false
+                }
+            }
+            if (m.snippet == null) {
+                // No price to show (e.g. DetailScreen's single station-location marker) — fall
+                // back to Google Maps' own default pin rather than a price chip with a
+                // placeholder "?", which read as a data error rather than "no price here".
+                Marker(
+                    state = MarkerState(position = LatLng(m.lat, m.lng)),
+                    title = m.title,
+                    onClick = { onClick() },
+                )
+            } else {
+                // Rendered as a small price chip instead of a default pin, so the price is
+                // visible directly on the map without needing to tap through to an info window.
+                MarkerComposable(
+                    m.id ?: -1,
+                    m.snippet,
+                    state = MarkerState(position = LatLng(m.lat, m.lng)),
+                    title = m.title,
+                    onClick = { onClick() },
                 ) {
-                    Text(
-                        m.snippet ?: "?",
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = m.color ?: MaterialTheme.colorScheme.primary,
+                        border = BorderStroke(1.dp, Color.White),
+                        shadowElevation = 3.dp,
+                    ) {
+                        Text(
+                            m.snippet,
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                        )
+                    }
                 }
             }
         }
