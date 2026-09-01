@@ -30,8 +30,12 @@ android {
     defaultConfig {
         minSdk = 26
 
-        // Backend API base URL — override per build variant
-        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8000\"")
+        // Backend API base URL. Points at the live prod API by default so debug builds work
+        // straight off a physical device with no local backend needed — 10.0.2.2 is an
+        // emulator-only loopback alias to the host machine, unreachable from real hardware.
+        // Point this at http://10.0.2.2:8000 (or your LAN IP) instead when you need debug builds
+        // hitting a local fuel-api instance.
+        buildConfigField("String", "API_BASE_URL", "\"https://api.fueltracker.uk\"")
         // Self-hosted Unleash — public Frontend API endpoint (not secret, unlike the client key).
         buildConfigField("String", "UNLEASH_URL", "\"https://flags.burny.uk\"")
         buildConfigField("String", "UNLEASH_CLIENT_KEY", "\"$unleashClientKey\"")
@@ -39,12 +43,6 @@ android {
 
     buildFeatures {
         buildConfig = true
-    }
-
-    buildTypes {
-        release {
-            buildConfigField("String", "API_BASE_URL", "\"https://api.fueltracker.uk\"")
-        }
     }
 
     compileOptions {
