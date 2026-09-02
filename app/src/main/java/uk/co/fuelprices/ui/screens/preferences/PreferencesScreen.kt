@@ -47,6 +47,7 @@ fun PreferencesScreen(
             modifier = Modifier
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
+                .imePadding()
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {

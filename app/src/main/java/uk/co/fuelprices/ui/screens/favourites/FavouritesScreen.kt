@@ -133,7 +133,10 @@ fun FavouritesScreen(
                                         onStationClick(fav.stationId)
                                     },
                                     headlineContent = {
-                                        Text("Station #${fav.stationId}", fontWeight = FontWeight.Medium)
+                                        Text(
+                                            fav.station?.name ?: "Station #${fav.stationId}",
+                                            fontWeight = FontWeight.Medium,
+                                        )
                                     },
                                     supportingContent = { Text(fuelLabel(fav.fuelType)) },
                                     leadingContent = {

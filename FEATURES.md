@@ -88,8 +88,9 @@ Your saved stations. **Requires sign-in.**
 
 - **Not logged in:** prompt to "Sign in to use favourites" (save stations, get price-drop alerts).
 - **Empty:** "No favourites yet — tap the heart icon on a station to add it here."
-- **Populated:** rows with a fuel-type-coloured heart, "Station #<id>", the fuel label, and an
-  "Alerts on" label when price-drop alerts are enabled for that favourite.
+- **Populated:** rows with a fuel-type-coloured heart, the station name (falls back to
+  "Station #<id>" if the joined station summary is missing), the fuel label, and an "Alerts on"
+  label when price-drop alerts are enabled for that favourite.
 - **Interactions:** tap a row → Detail; **swipe left to remove** (reveals a red delete icon).
 
 ### Detail

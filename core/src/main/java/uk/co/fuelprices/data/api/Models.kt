@@ -281,6 +281,20 @@ data class FavouriteDto(
     @SerialName("fuel_type") val fuelType: String,
     @SerialName("notify_on_drop") val notifyOnDrop: Boolean,
     @SerialName("price_threshold_pence") val priceThresholdPence: Double? = null,
+    val station: FavouriteStationDto? = null,
+)
+
+// The GET /api/favourites list response joins in a station summary (name/brand) so the
+// Favourites screen can show a real name without a second request per row; the POST response
+// omits it (a fresh favourite has no need for it beyond the id/station_id already known locally).
+@Serializable
+data class FavouriteStationDto(
+    val id: Int,
+    @SerialName("gov_id") val govId: String,
+    val name: String,
+    val brand: String? = null,
+    val latitude: Double,
+    val longitude: Double,
 )
 
 @Serializable
