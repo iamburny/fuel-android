@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import uk.co.fuelprices.data.api.PreferencesDto
 import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferencesStore
+import uk.co.fuelprices.data.repository.syncPreferencesBestEffort
 import uk.co.fuelprices.util.FeatureFlags
 import javax.inject.Inject
 
@@ -86,6 +87,27 @@ class PreferencesViewModel @Inject constructor(
             _state.value = _state.value.copy(
                 isLoggedIn = repo.isLoggedIn(),
                 email = repo.currentEmail(),
+            )
+        }
+    }
+
+    /**
+     * Pulls this account's stored preferences and reconciles them with what's local, same as the
+     * merge [uk.co.fuelprices.ui.screens.auth.AuthViewModel] runs right after sign-in — but that
+     * only ever runs once, at the moment of an interactive login. A device that's already signed
+     * in (the common case: the app was never logged out) would otherwise never learn about a
+     * change made on another platform/device. The screen calls this every time it's (re)entered,
+     * same as the Favourites screen re-fetching on every entry rather than only once.
+     */
+    fun syncFromAccount() {
+        viewModelScope.launch {
+            val merged = syncPreferencesBestEffort(repo, store) ?: return@launch
+            _state.value = _state.value.copy(
+                fuelType = merged.fuelType,
+                mpgText = merged.mpg?.let { formatNumber(it) } ?: "",
+                tankCapacityText = merged.tankCapacityLitres?.let { formatNumber(it) } ?: "",
+                useLongFuelNames = merged.useLongFuelNames,
+                themeMode = merged.themeMode,
             )
         }
     }

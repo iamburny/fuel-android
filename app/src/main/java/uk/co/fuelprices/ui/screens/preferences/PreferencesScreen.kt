@@ -36,9 +36,14 @@ fun PreferencesScreen(
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
 
-    // Re-check the signed-in state each time this screen enters composition, so a sign-in/out done
-    // on the Auth screen is reflected on return (TokenStore exposes no reactive Flow).
-    LaunchedEffect(Unit) { viewModel.refreshAccount() }
+    // Re-check the signed-in state, and pull the account's stored preferences, each time this
+    // screen enters composition — mirrors the Favourites screen's per-entry reload. Without the
+    // latter, a preference changed on another device/platform only reaches this one at the next
+    // interactive login, since the login-time merge in AuthViewModel runs just once.
+    LaunchedEffect(Unit) {
+        viewModel.refreshAccount()
+        viewModel.syncFromAccount()
+    }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Preferences") }) }
