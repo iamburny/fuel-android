@@ -20,6 +20,7 @@ import retrofit2.Retrofit
 import uk.co.fuelprices.core.BuildConfig
 import uk.co.fuelprices.data.api.FuelPricesApi
 import uk.co.fuelprices.data.db.FuelDatabase
+import uk.co.fuelprices.data.repository.TokenAuthenticator
 import uk.co.fuelprices.data.repository.TokenStore
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
@@ -35,7 +36,7 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideOkHttp(tokenStore: TokenStore): OkHttpClient {
+    fun provideOkHttp(tokenStore: TokenStore, authenticator: TokenAuthenticator): OkHttpClient {
         return OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -51,18 +52,12 @@ object AppModule {
                 }
                 chain.proceed(request)
             }
-            // The backend issues a 24h JWT with no refresh token/endpoint at all — once it
-            // expires (or the account's deleted, etc.) every authenticated call 401s forever,
-            // since nothing else ever clears the stored token. Drop it here so isLoggedIn() flips
-            // to false right away and screens like Favourites show their normal signed-out state
-            // instead of a raw "HTTP 401" once the exception reaches them.
-            .addInterceptor { chain ->
-                val response = chain.proceed(chain.request())
-                if (response.code == 401) {
-                    kotlinx.coroutines.runBlocking { tokenStore.clear() }
-                }
-                response
-            }
+            // The backend issues a 24h JWT alongside a long-lived opaque refresh token.
+            // TokenAuthenticator attempts one silent POST /api/auth/refresh on a 401 before
+            // giving up — only then does it clear the stored token, so isLoggedIn() flips to
+            // false and screens like Favourites show their normal signed-out state instead of a
+            // raw "HTTP 401" once the exception reaches them.
+            .authenticator(authenticator)
             .addInterceptor(
                 HttpLoggingInterceptor().apply {
                     level = if (BuildConfig.DEBUG)

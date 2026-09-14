@@ -16,17 +16,24 @@ private val Context.dataStore by preferencesDataStore(name = "auth")
 class TokenStore @Inject constructor(@ApplicationContext private val context: Context) {
 
     private val tokenKey = stringPreferencesKey("jwt_token")
+    private val refreshTokenKey = stringPreferencesKey("refresh_token")
     private val emailKey = stringPreferencesKey("user_email")
 
-    suspend fun saveToken(token: String, email: String) {
+    suspend fun saveToken(token: String, refreshToken: String?, email: String) {
         context.dataStore.edit {
             it[tokenKey] = token
+            if (refreshToken != null) it[refreshTokenKey] = refreshToken
             it[emailKey] = email
         }
     }
 
     suspend fun getToken(): String? =
         context.dataStore.data.map { it[tokenKey] }.first()
+
+    /** Long-lived opaque token used by [uk.co.fuelprices.data.repository.TokenAuthenticator] to
+     *  silently mint a new access token via `POST /api/auth/refresh` once it expires. */
+    suspend fun getRefreshToken(): String? =
+        context.dataStore.data.map { it[refreshTokenKey] }.first()
 
     suspend fun getEmail(): String? =
         context.dataStore.data.map { it[emailKey] }.first()

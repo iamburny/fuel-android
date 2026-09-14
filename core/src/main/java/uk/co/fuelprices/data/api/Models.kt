@@ -249,9 +249,17 @@ data class GoogleLoginRequest(@SerialName("id_token") val idToken: String)
 @Serializable
 data class ForgotPasswordRequest(val email: String)
 
+/** Sent to `POST /api/auth/refresh` to silently mint a new access token once the old one expires
+ *  — see `TokenAuthenticator`. */
+@Serializable
+data class RefreshRequest(@SerialName("refresh_token") val refreshToken: String)
+
 @Serializable
 data class TokenResponse(
     @SerialName("access_token") val accessToken: String,
+    // Optional permanently, not just during rollout — costs nothing and is cheap insurance
+    // against any future deploy-order mismatch with the backend.
+    @SerialName("refresh_token") val refreshToken: String? = null,
     @SerialName("token_type") val tokenType: String = "bearer",
 )
 
