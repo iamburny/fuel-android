@@ -146,10 +146,14 @@ class FuelRepository @Inject constructor(
 
     // ── Auth ─────────────────────────────────────────────
 
+    private suspend fun persistSession(response: TokenResponse, email: String) {
+        tokenStore.saveToken(response.accessToken, response.refreshToken, email)
+    }
+
     suspend fun login(email: String, password: String): TokenResponse {
         try {
             val response = api.login(email, password)
-            tokenStore.saveToken(response.accessToken, email)
+            persistSession(response, email)
             return response
         } catch (e: retrofit2.HttpException) {
             throw AuthException.from(e)
@@ -169,7 +173,7 @@ class FuelRepository @Inject constructor(
     suspend fun loginWithGoogle(idToken: String, email: String): TokenResponse {
         try {
             val response = api.googleLogin(GoogleLoginRequest(idToken))
-            tokenStore.saveToken(response.accessToken, email)
+            persistSession(response, email)
             return response
         } catch (e: retrofit2.HttpException) {
             throw AuthException.from(e)

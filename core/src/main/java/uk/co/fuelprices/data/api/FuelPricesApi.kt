@@ -80,6 +80,11 @@ interface FuelPricesApi {
     @POST("api/auth/google")
     suspend fun googleLogin(@Body body: GoogleLoginRequest): TokenResponse
 
+    // Authenticates via the refresh token in the body, not a Bearer header — called directly by
+    // TokenAuthenticator, never through the normal Bearer-attaching interceptor path.
+    @POST("api/auth/refresh")
+    suspend fun refresh(@Body body: RefreshRequest): TokenResponse
+
     @POST("api/auth/forgot-password")
     suspend fun forgotPassword(@Body body: ForgotPasswordRequest)
 
