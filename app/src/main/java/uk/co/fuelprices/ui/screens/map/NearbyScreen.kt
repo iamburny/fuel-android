@@ -542,8 +542,9 @@ private fun rememberBelowAnchorTooltipPositionProvider(
                 popupContentSize: IntSize,
             ): IntOffset {
                 val x = anchorBounds.left + (anchorBounds.width - popupContentSize.width) / 2
+                val clampedX = x.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
                 val y = anchorBounds.bottom + gapPx
-                return IntOffset(x, y)
+                return IntOffset(clampedX, y)
             }
         }
     }
