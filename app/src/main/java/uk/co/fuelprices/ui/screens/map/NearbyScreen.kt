@@ -2,15 +2,18 @@ package uk.co.fuelprices.ui.screens.map
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.LocalGasStation
+import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -19,9 +22,19 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.PopupPositionProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import uk.co.fuelprices.data.api.FuelTypes
 import uk.co.fuelprices.data.api.StationDto
@@ -69,16 +82,81 @@ fun NearbyScreen(
                             Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                         }
                     }
-                    IconButton(onClick = {
-                        // Only clear (and thus re-fetch) if there was actually a search in
-                        // progress — closing an empty search panel shouldn't re-fetch anything.
-                        if (showPanel && state.searchQuery.isNotEmpty()) viewModel.setSearchQuery("")
-                        showPanel = !showPanel
-                    }) {
-                        Icon(
-                            if (showPanel) Icons.Default.Clear else Icons.Default.Search,
-                            contentDescription = if (showPanel) "Close" else "Search",
-                        )
+                    // isPersistent = true: per Material3's TooltipState (see
+                    // rememberTooltipState()'s KDoc, androidx.compose.material3 1.3.1) a
+                    // non-persistent tooltip auto-dismisses after a short (1.5s) timeout, while a
+                    // persistent one "will only be dismissed when the user clicks outside the
+                    // bounds of the tooltip or if TooltipState.dismiss() is called". TooltipBox's
+                    // underlying Popup defaults dismissOnClickOutside = true and is focusable, so
+                    // an outside tap (including on the anchor IconButton itself, or anywhere else
+                    // on screen) is consumed to dismiss it rather than reaching whatever's
+                    // underneath — that's what makes tapping the button or tapping elsewhere both
+                    // count as "dismiss" without any extra wiring here. A tap *inside* the
+                    // tooltip's own bounds is not treated as "outside" by Popup, so
+                    // SpeechBubbleTooltip below adds its own clickable-to-dismiss.
+                    val tooltipState = rememberTooltipState(isPersistent = true)
+                    // One-time coach-mark pointing at the toggle, shown once ever (see
+                    // NearbyUiState.showCheapestTooltip) — only ever while the panel is closed.
+                    LaunchedEffect(state.showCheapestTooltip, showPanel) {
+                        if (state.showCheapestTooltip && !showPanel) {
+                            tooltipState.show()
+                        }
+                    }
+                    // Marks the coach-mark seen exactly once, on a genuine true->false transition
+                    // of tooltipState.isVisible — NOT after tooltipState.show() returns. Verified
+                    // against the real androidx.compose.material3 1.3.1 sources
+                    // (material3-android-1.3.1-sources.jar, Tooltip.kt's TooltipStateImpl /
+                    // internal/BasicTooltip.android.kt's TooltipPopup): with isPersistent = true,
+                    // show() suspends via suspendCancellableCoroutine, stashing the continuation in
+                    // a private `job`. dismiss() (called from SpeechBubbleTooltip's own
+                    // clickable, or from TooltipPopup's onDismissRequest on an outside tap) only
+                    // sets `transition.targetState = false` — it never resumes or cancels that
+                    // continuation. The *only* thing that does is BasicTooltipBox's
+                    // `DisposableEffect(state) { onDispose { state.onDispose() } }`, which cancels
+                    // `job` with a CancellationException when the whole TooltipBox leaves
+                    // composition — so on an ordinary dismiss, show() simply never returns, and
+                    // code placed after it (like the old direct markCheapestTooltipSeen() call)
+                    // never runs. isVisible itself (`transition.currentState ||
+                    // transition.targetState`) IS reliably observable, though: both fields are
+                    // documented as ("Both currentState and targetState are backed by a State
+                    // object", MutableTransitionState's KDoc in animation-core 1.7.5) `by
+                    // mutableStateOf(...)`, so snapshotFlow correctly reacts once the popup has
+                    // actually finished its fade-out and left composition — for every dismiss path
+                    // (bubble tap, outside tap, or the panel opening) without wiring each one
+                    // individually.
+                    LaunchedEffect(tooltipState) {
+                        var wasVisible = false
+                        snapshotFlow { tooltipState.isVisible }.collect { visible ->
+                            if (wasVisible && !visible) {
+                                viewModel.markCheapestTooltipSeen()
+                            }
+                            wasVisible = visible
+                        }
+                    }
+                    TooltipBox(
+                        // Custom below-anchor placement — Material3 only ships an
+                        // above-anchor-with-below-fallback provider
+                        // (TooltipDefaults.rememberPlainTooltipPositionProvider()).
+                        positionProvider = rememberBelowAnchorTooltipPositionProvider(),
+                        tooltip = {
+                            SpeechBubbleTooltip(
+                                state = tooltipState,
+                                text = "See the cheapest fuel prices near you",
+                            )
+                        },
+                        state = tooltipState,
+                    ) {
+                        IconButton(onClick = {
+                            // Only clear (and thus re-fetch) if there was actually a search in
+                            // progress — closing an empty search panel shouldn't re-fetch anything.
+                            if (showPanel && state.searchQuery.isNotEmpty()) viewModel.setSearchQuery("")
+                            showPanel = !showPanel
+                        }) {
+                            Icon(
+                                if (showPanel) Icons.Default.Clear else Icons.Default.MonetizationOn,
+                                contentDescription = if (showPanel) "Close" else "Cheapest prices",
+                            )
+                        }
                     }
                 }
             )
@@ -88,8 +166,8 @@ fun NearbyScreen(
         AnnouncementBanner()
         Box(Modifier.weight(1f).fillMaxWidth()) {
             // Falls back to the GPS-anchored station set until the user's first drag produces a
-            // viewport load; the bottom list panel below always keeps using state.stations,
-            // unaffected by dragging.
+            // viewport load; the search panel's default (non-search) list below tracks the same
+            // set via state.cheapestSortedStations(), so it always matches what's pinned here.
             val mapMarkers = if (!state.isLoading) {
                 (state.viewportStations ?: state.stations).map { station ->
                     val cheapestPrice = station.prices
@@ -151,25 +229,59 @@ fun NearbyScreen(
             // Currently filtered fuel type, always visible regardless of panel state. Tapping it
             // cycles to the next fuel type — a quick way to flip through prices without opening
             // the search panel's chip row.
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(12.dp)
-                    .clickable {
-                        val nextIndex = (FuelTypes.ALL.indexOf(state.selectedFuelType) + 1) % FuelTypes.ALL.size
-                        viewModel.setFuelType(FuelTypes.ALL[nextIndex])
-                    },
-                shape = RoundedCornerShape(50),
-                color = FuelTypes.color(state.selectedFuelType),
-                shadowElevation = 4.dp,
+            //
+            // Second, chained one-time coach-mark: shares the same below-anchor speech-bubble
+            // machinery as the cheapest-toggle tooltip above (rememberBelowAnchorTooltipPositionProvider,
+            // SpeechBubbleTooltip) and the exact same isVisible-transition dismiss-detection
+            // pattern — see the top-bar tooltip's comments for why that (not show() returning)
+            // is what makes "shown once ever" actually work. Unlike the top-bar tooltip, this one
+            // is NOT gated on showPanel — the pill lives on the map itself and stays visible
+            // regardless of the search panel's open/closed state.
+            val fuelPillTooltipState = rememberTooltipState(isPersistent = true)
+            LaunchedEffect(state.showFuelTypePillTooltip) {
+                if (state.showFuelTypePillTooltip) {
+                    fuelPillTooltipState.show()
+                }
+            }
+            LaunchedEffect(fuelPillTooltipState) {
+                var wasVisible = false
+                snapshotFlow { fuelPillTooltipState.isVisible }.collect { visible ->
+                    if (wasVisible && !visible) {
+                        viewModel.markFuelTypePillTooltipSeen()
+                    }
+                    wasVisible = visible
+                }
+            }
+            TooltipBox(
+                positionProvider = rememberBelowAnchorTooltipPositionProvider(),
+                tooltip = {
+                    SpeechBubbleTooltip(
+                        state = fuelPillTooltipState,
+                        text = "Tap to cycle between petrol, diesel, and other fuel types.",
+                    )
+                },
+                state = fuelPillTooltipState,
+                modifier = Modifier.align(Alignment.TopEnd),
             ) {
-                Text(
-                    fuelLabel(state.selectedFuelType),
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                )
+                Surface(
+                    modifier = Modifier
+                        .padding(12.dp)
+                        .clickable {
+                            val nextIndex = (FuelTypes.ALL.indexOf(state.selectedFuelType) + 1) % FuelTypes.ALL.size
+                            viewModel.setFuelType(FuelTypes.ALL[nextIndex])
+                        },
+                    shape = RoundedCornerShape(50),
+                    color = FuelTypes.color(state.selectedFuelType),
+                    shadowElevation = 4.dp,
+                ) {
+                    Text(
+                        fuelLabel(state.selectedFuelType),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
             }
 
             // Shown only once the user has dragged away from their GPS location — auto-recenter
@@ -264,28 +376,6 @@ fun NearbyScreen(
                             singleLine = true,
                         )
 
-                        // Mode toggle (Nearby / Cheapest)
-                        if (state.searchQuery.length < 2) {
-                            SingleChoiceSegmentedButtonRow(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp)
-                            ) {
-                                SegmentedButton(
-                                    selected = state.mode == ListMode.NEARBY,
-                                    onClick = { viewModel.setMode(ListMode.NEARBY) },
-                                    shape = SegmentedButtonDefaults.itemShape(0, 2),
-                                ) { Text("Nearby") }
-                                SegmentedButton(
-                                    selected = state.mode == ListMode.CHEAPEST,
-                                    onClick = { viewModel.setMode(ListMode.CHEAPEST) },
-                                    shape = SegmentedButtonDefaults.itemShape(1, 2),
-                                ) { Text("Cheapest") }
-                            }
-
-                            Spacer(Modifier.height(4.dp))
-                        }
-
                         // Fuel type chips
                         Row(
                             Modifier
@@ -321,19 +411,51 @@ fun NearbyScreen(
                                 Text("Error: ${state.error}", color = MaterialTheme.colorScheme.error)
                             }
                         } else {
-                            LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
-                                item {
-                                    // Compliance: real, tappable link to the official gov.uk
-                                    // source (required by the Misleading Claims policy — a
-                                    // plain-text mention of "gov.uk/..." is not an accessible
-                                    // link), plus the discrepancy-report action it referred to.
+                            // Search results (searchQuery.length >= 2) use state.stations as
+                            // returned by the search API, untouched by any of the below. The
+                            // default (non-search) list instead tracks whatever's currently
+                            // pinned on the map, cheapest-first, via cheapestSortedStations() —
+                            // which drops stations with no price for selectedFuelType, so an
+                            // explicit empty state is needed for that case.
+                            val isSearching = state.searchQuery.length >= 2
+                            val listStations = if (isSearching) state.stations else state.cheapestSortedStations()
+                            if (!isSearching && !state.isLoading && listStations.isEmpty()) {
+                                Column(Modifier.fillMaxWidth().weight(1f)) {
+                                    Box(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .weight(1f)
+                                            .padding(32.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            "No nearby stations currently report a ${fuelLabel(state.selectedFuelType)} price.",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            textAlign = TextAlign.Center,
+                                        )
+                                    }
+                                    // Compliance: this empty-results branch is still a price view
+                                    // (Fair Use Policy Compliance, CLAUDE.md) — the populated
+                                    // LazyColumn below already carries this notice as its trailing
+                                    // item, this branch was missing it entirely.
                                     DataAttributionNotice()
                                 }
+                            } else {
+                                LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+                                    items(listStations, key = { it.id }) { station ->
+                                        StationRow(station, state.selectedFuelType) {
+                                            viewModel.trackStationClick(station.id, "list")
+                                            onStationClick(station.id)
+                                        }
+                                    }
 
-                                items(state.stations, key = { it.id }) { station ->
-                                    StationRow(station, state.selectedFuelType) {
-                                        viewModel.trackStationClick(station.id, "list")
-                                        onStationClick(station.id)
+                                    item {
+                                        // Compliance: real, tappable link to the official gov.uk
+                                        // source (required by the Misleading Claims policy — a
+                                        // plain-text mention of "gov.uk/..." is not an accessible
+                                        // link), plus the discrepancy-report action it referred
+                                        // to. Last row, after all stations.
+                                        DataAttributionNotice()
                                     }
                                 }
                             }
@@ -379,4 +501,152 @@ private fun StationRow(station: StationDto, fuelType: String, onClick: () -> Uni
         },
     )
     HorizontalDivider()
+}
+
+// --- Shared coach-mark tooltip machinery: below-anchor speech bubble -----------------------
+// Used by both the cheapest-toggle tooltip (top bar) and the fuel-type pill tooltip (map) —
+// extracted here rather than duplicated so the position-provider/shape/dismiss-detection logic
+// (in particular the isVisible-transition-based seen-marking, see NearbyScreen's two
+// snapshotFlow { tooltipState.isVisible } blocks) only exists once.
+
+private val SpeechBubbleTailWidth = 16.dp
+private val SpeechBubbleTailHeight = 8.dp
+private val SpeechBubbleCornerRadius = 8.dp
+private val SpeechBubbleAnchorGap = 4.dp
+
+/**
+ * [PopupPositionProvider] that places the tooltip BELOW its anchor, horizontally centered under
+ * it — unlike [TooltipDefaults.rememberPlainTooltipPositionProvider], which prefers above the
+ * anchor (falling back to below only if there's no room above). Verified against the real
+ * [PopupPositionProvider] interface (androidx.compose.ui:ui-android 1.7.5 sources):
+ * `calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection,
+ * popupContentSize: IntSize): IntOffset`, both bounds/offset window-relative.
+ *
+ * [gap] is the vertical space left between the anchor's bottom edge and the tip of the bubble's
+ * tail. The tail itself is drawn as part of the popup content (see [rememberSpeechBubbleShape]),
+ * occupying the content's own top [SpeechBubbleTailHeight] — so a small [gap] (not
+ * [SpeechBubbleTailHeight] itself) is enough for the tail to read as touching the anchor
+ * without overlapping it.
+ */
+@Composable
+private fun rememberBelowAnchorTooltipPositionProvider(
+    gap: Dp = SpeechBubbleAnchorGap,
+): PopupPositionProvider {
+    val gapPx = with(LocalDensity.current) { gap.roundToPx() }
+    return remember(gapPx) {
+        object : PopupPositionProvider {
+            override fun calculatePosition(
+                anchorBounds: IntRect,
+                windowSize: IntSize,
+                layoutDirection: LayoutDirection,
+                popupContentSize: IntSize,
+            ): IntOffset {
+                val x = anchorBounds.left + (anchorBounds.width - popupContentSize.width) / 2
+                val clampedX = x.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
+                val y = anchorBounds.bottom + gapPx
+                return IntOffset(clampedX, y)
+            }
+        }
+    }
+}
+
+/**
+ * Speech-bubble [Shape]: a rounded-rectangle body with a small triangular tail centered on its
+ * top edge, pointing straight up — towards the anchor button the tooltip now sits below. Built
+ * with [GenericShape] (`Path.(size: Size, layoutDirection: LayoutDirection) -> Unit`, per
+ * androidx.compose.foundation:foundation-android 1.7.5 sources) by tracing the outline clockwise
+ * from just right of the top-left corner: across the top edge, detouring up-and-back-down to
+ * form the tail, on to the top-right corner, then standard quarter-circle [arcTo] calls for each
+ * rounded corner.
+ *
+ * The tail occupies the shape's own top [SpeechBubbleTailHeight] (the rounded body starts
+ * there, not at y = 0) — callers must pad their content below that so text doesn't render into
+ * the notch.
+ */
+@Composable
+private fun rememberSpeechBubbleShape(): Shape {
+    val density = LocalDensity.current
+    val tailWidthPx = with(density) { SpeechBubbleTailWidth.toPx() }
+    val tailHeightPx = with(density) { SpeechBubbleTailHeight.toPx() }
+    val cornerRadiusPx = with(density) { SpeechBubbleCornerRadius.toPx() }
+    return remember(tailWidthPx, tailHeightPx, cornerRadiusPx) {
+        GenericShape { size, _ ->
+            val tailHalfWidth = tailWidthPx / 2f
+            val centerX = size.width / 2f
+            val bodyTop = tailHeightPx
+            val bodyBottom = size.height
+            // Guard against a content box too small for the requested radius (e.g. very short
+            // text), which would otherwise produce overlapping/self-intersecting arcs.
+            val r = cornerRadiusPx.coerceAtMost(minOf(size.width, bodyBottom - bodyTop) / 2f)
+
+            moveTo(r, bodyTop)
+            lineTo(centerX - tailHalfWidth, bodyTop)
+            lineTo(centerX, 0f) // tail apex, pointing up at the anchor
+            lineTo(centerX + tailHalfWidth, bodyTop)
+            lineTo(size.width - r, bodyTop)
+            arcTo(
+                rect = Rect(size.width - 2 * r, bodyTop, size.width, bodyTop + 2 * r),
+                startAngleDegrees = -90f,
+                sweepAngleDegrees = 90f,
+                forceMoveTo = false,
+            ) // top-right corner
+            lineTo(size.width, bodyBottom - r)
+            arcTo(
+                rect = Rect(size.width - 2 * r, bodyBottom - 2 * r, size.width, bodyBottom),
+                startAngleDegrees = 0f,
+                sweepAngleDegrees = 90f,
+                forceMoveTo = false,
+            ) // bottom-right corner
+            lineTo(r, bodyBottom)
+            arcTo(
+                rect = Rect(0f, bodyBottom - 2 * r, 2 * r, bodyBottom),
+                startAngleDegrees = 90f,
+                sweepAngleDegrees = 90f,
+                forceMoveTo = false,
+            ) // bottom-left corner
+            lineTo(0f, bodyTop + r)
+            arcTo(
+                rect = Rect(0f, bodyTop, 2 * r, bodyTop + 2 * r),
+                startAngleDegrees = 180f,
+                sweepAngleDegrees = 90f,
+                forceMoveTo = false,
+            ) // top-left corner
+            close()
+        }
+    }
+}
+
+/**
+ * Custom tooltip content standing in for [PlainTooltip]: a [Surface] clipped to
+ * [rememberSpeechBubbleShape] instead of a plain rounded rect. Also adds its own tap-to-dismiss —
+ * [TooltipBox]'s underlying Popup (androidx.compose.ui:ui-android 1.7.5,
+ * `AndroidPopup.android.kt`'s `onTouchEvent`) only calls `onDismissRequest` for a touch *outside*
+ * the popup's bounds (or `ACTION_OUTSIDE`); a tap landing inside the bubble itself is ordinary
+ * in-bounds input and is otherwise ignored, so without this a tap directly on the tooltip
+ * wouldn't dismiss it.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SpeechBubbleTooltip(state: TooltipState, text: String) {
+    Surface(
+        shape = rememberSpeechBubbleShape(),
+        color = TooltipDefaults.plainTooltipContainerColor,
+        contentColor = TooltipDefaults.plainTooltipContentColor,
+        modifier = Modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = state::dismiss,
+        ),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(
+                start = 12.dp,
+                end = 12.dp,
+                bottom = 8.dp,
+                top = SpeechBubbleTailHeight + 8.dp,
+            ),
+        )
+    }
 }

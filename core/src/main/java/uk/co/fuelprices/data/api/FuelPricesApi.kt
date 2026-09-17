@@ -35,15 +35,6 @@ interface FuelPricesApi {
 
     // ── Prices ───────────────────────────────────────────
 
-    @GET("api/prices/cheapest")
-    suspend fun getCheapest(
-        @Query("fuel_type") fuelType: String = "E10",
-        @Query("lat") lat: Double? = null,
-        @Query("lng") lng: Double? = null,
-        @Query("radius") radiusMiles: Double = 10.0,
-        @Query("limit") limit: Int = 10,
-    ): CheapestResponse
-
     @GET("api/prices/averages")
     suspend fun getNationalAverages(): AveragesResponse
 

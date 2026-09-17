@@ -20,7 +20,7 @@ data class UserPreferences(
     val fuelType: String = "E10",
     val mpg: Double? = null,
     val tankCapacityLitres: Double? = null,
-    val useLongFuelNames: Boolean = false,
+    val useLongFuelNames: Boolean = true,
     /** Appearance selector; stored as ThemeMode.name ("SYSTEM" | "LIGHT" | "DARK"). */
     val themeMode: String = "SYSTEM",
     /** Number of cold app launches so far (drives the support prompt cadence). */
@@ -33,6 +33,14 @@ data class UserPreferences(
     /** [uk.co.fuelprices.ui.components.ReleaseNoticeContent.dismissKey] of the last-dismissed
      *  release notice — re-shows automatically if the flag's variant content changes. */
     val dismissedReleaseNoticeKey: String? = null,
+    /** True once the Nearby screen's one-time "Cheapest prices" toggle tooltip has been shown.
+     *  Unlike [dismissedAnnouncementMessage]/[dismissedReleaseNoticeKey], this isn't tied to any
+     *  remote flag/content — it's a plain permanent flag that, once true, never re-arms. */
+    val hasSeenNearbyCheapestTooltip: Boolean = false,
+    /** True once the Nearby screen's one-time fuel-type pill tooltip has been shown. Chained after
+     *  [hasSeenNearbyCheapestTooltip] — see [NearbyViewModel][uk.co.fuelprices.ui.screens.map.NearbyViewModel]'s
+     *  init block. Same permanent, never-re-armed semantics. */
+    val hasSeenFuelTypePillTooltip: Boolean = false,
 ) {
     /** True once there's enough info to estimate a driving cost (see FuelCostCalculator). */
     val canEstimateDriveCost: Boolean get() = mpg != null && tankCapacityLitres != null
@@ -50,18 +58,22 @@ class UserPreferencesStore @Inject constructor(@ApplicationContext private val c
     private val coffeePromptPausedUntilKey = intPreferencesKey("coffee_prompt_paused_until")
     private val dismissedAnnouncementKey = stringPreferencesKey("dismissed_announcement_message")
     private val dismissedReleaseNoticePrefKey = stringPreferencesKey("dismissed_release_notice_key")
+    private val hasSeenNearbyCheapestTooltipKey = booleanPreferencesKey("has_seen_nearby_cheapest_tooltip")
+    private val hasSeenFuelTypePillTooltipKey = booleanPreferencesKey("has_seen_fuel_type_pill_tooltip")
 
     val preferences: Flow<UserPreferences> = context.userPreferencesDataStore.data.map { prefs ->
         UserPreferences(
             fuelType = prefs[fuelTypeKey] ?: "E10",
             mpg = prefs[mpgKey],
             tankCapacityLitres = prefs[tankCapacityKey],
-            useLongFuelNames = prefs[useLongFuelNamesKey] ?: false,
+            useLongFuelNames = prefs[useLongFuelNamesKey] ?: true,
             themeMode = prefs[themeModeKey] ?: "SYSTEM",
             appOpenCount = prefs[appOpenCountKey] ?: 0,
             coffeePromptPausedUntilOpen = prefs[coffeePromptPausedUntilKey] ?: 0,
             dismissedAnnouncementMessage = prefs[dismissedAnnouncementKey],
             dismissedReleaseNoticeKey = prefs[dismissedReleaseNoticePrefKey],
+            hasSeenNearbyCheapestTooltip = prefs[hasSeenNearbyCheapestTooltipKey] ?: false,
+            hasSeenFuelTypePillTooltip = prefs[hasSeenFuelTypePillTooltipKey] ?: false,
         )
     }
 
@@ -120,6 +132,22 @@ class UserPreferencesStore @Inject constructor(@ApplicationContext private val c
     suspend fun dismissReleaseNotice(key: String) {
         context.userPreferencesDataStore.edit { prefs ->
             prefs[dismissedReleaseNoticePrefKey] = key
+        }
+    }
+
+    /** Marks the Nearby screen's one-time "Cheapest prices" toggle tooltip as seen — permanent,
+     *  never re-armed (unlike [dismissAnnouncement]/[dismissReleaseNotice]). */
+    suspend fun markNearbyCheapestTooltipSeen() {
+        context.userPreferencesDataStore.edit { prefs ->
+            prefs[hasSeenNearbyCheapestTooltipKey] = true
+        }
+    }
+
+    /** Marks the Nearby screen's one-time fuel-type pill tooltip as seen — permanent, never
+     *  re-armed, mirroring [markNearbyCheapestTooltipSeen]. */
+    suspend fun markFuelTypePillTooltipSeen() {
+        context.userPreferencesDataStore.edit { prefs ->
+            prefs[hasSeenFuelTypePillTooltipKey] = true
         }
     }
 }

@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import uk.co.fuelprices.data.api.PriceDto
 import uk.co.fuelprices.data.api.StationDto
 import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferencesStore
@@ -23,14 +22,11 @@ import uk.co.fuelprices.util.LocationHelper
 import uk.co.fuelprices.util.haversineMiles
 import javax.inject.Inject
 
-enum class ListMode { NEARBY, CHEAPEST }
-
 data class NearbyUiState(
     val isLoading: Boolean = true,
     val stations: List<StationDto> = emptyList(),
     val selectedFuelType: String = "E10",
     val radiusMiles: Double = 10.0,
-    val mode: ListMode = ListMode.NEARBY,
     val searchQuery: String = "",
     val userLat: Double? = null,
     val userLng: Double? = null,
@@ -38,11 +34,11 @@ data class NearbyUiState(
     // granted throws a SecurityException and crashes the app, so this must reflect the real
     // permission state rather than being assumed true.
     val hasLocationPermission: Boolean = false,
-    val discrepancyReportUrl: String = "",
     val error: String? = null,
     // Stations for whatever map area the user last dragged to — null until the first drag, at
-    // which point map pins switch to this instead of the GPS-anchored `stations`. The bottom
-    // list panel always keeps using `stations`, unaffected by dragging.
+    // which point map pins switch to this instead of the GPS-anchored `stations`. The search
+    // panel's default (non-search) list also switches to this via cheapestSortedStations(), so it
+    // always tracks whatever's currently pinned on the map.
     val viewportStations: List<StationDto>? = null,
     // Bumped only when the map should jump to userLat/userLng — never on every reload, so
     // changing the radius/fuel filter/mode doesn't fight a drag by snapping the camera back.
@@ -64,7 +60,32 @@ data class NearbyUiState(
     val cameraLat: Double? = null,
     val cameraLng: Double? = null,
     val cameraZoom: Float = 12f,
+    // True once, on first appearance, until the one-time "Cheapest prices" toggle tooltip has been
+    // shown and dismissed — see NearbyViewModel.markCheapestTooltipSeen(). Lives here (rather than
+    // local Composable state) so it survives rotation, same as cameraLat/cameraLng.
+    val showCheapestTooltip: Boolean = false,
+    // True once the fuel-type pill's one-time tooltip should be shown — eligible only once the
+    // cheapest-toggle tooltip above has actually been marked seen (see
+    // NearbyViewModel.markCheapestTooltipSeen() and its init-time equivalent for returning users).
+    // Unlike showCheapestTooltip this isn't gated on showPanel — the pill sits on the map itself
+    // and is visible regardless of the search panel's open/closed state.
+    val showFuelTypePillTooltip: Boolean = false,
 )
+
+/** Client-side derived view of whatever's currently pinned on the map (viewportStations after a
+ *  drag, else the GPS-anchored `stations`), sorted ascending by price for `selectedFuelType` and
+ *  filtered to stations that report one. No network call — this is a pure function over state
+ *  already held, so it can't drift from what's actually pinned on the map, and re-evaluates live
+ *  (fuel-type change / a drag while the panel is open) since it's called fresh on every
+ *  recomposition rather than cached. Backs the search panel's default (non-search) list. */
+fun NearbyUiState.cheapestSortedStations(): List<StationDto> =
+    (viewportStations ?: stations)
+        .mapNotNull { station ->
+            station.prices.filter { it.fuelType == selectedFuelType }.minByOrNull { it.pricePence }
+                ?.let { station to it.pricePence }
+        }
+        .sortedBy { it.second }
+        .map { it.first }
 
 @HiltViewModel
 class NearbyViewModel @Inject constructor(
@@ -96,8 +117,17 @@ class NearbyViewModel @Inject constructor(
 
         viewModelScope.launch {
             // Start from the user's saved "usual fuel" preference rather than always defaulting
-            // to E10.
-            _state.value = _state.value.copy(selectedFuelType = preferencesStore.get().fuelType)
+            // to E10, and show the one-time toggle tooltip only if the user hasn't seen it yet.
+            val prefs = preferencesStore.get()
+            _state.value = _state.value.copy(
+                selectedFuelType = prefs.fuelType,
+                showCheapestTooltip = !prefs.hasSeenNearbyCheapestTooltip,
+                // Chained: for a returning user who already dismissed the cheapest-toggle tooltip
+                // in a prior session but hasn't yet seen this one, it becomes eligible immediately.
+                // A user still on their first-ever cheapest-toggle tooltip gets this later, when
+                // markCheapestTooltipSeen() flips it in the same state update.
+                showFuelTypePillTooltip = prefs.hasSeenNearbyCheapestTooltip && !prefs.hasSeenFuelTypePillTooltip,
+            )
 
             // Give the permission dialog a brief window to be answered before firing the first
             // request — otherwise we load the fallback location, render it, then immediately
@@ -233,24 +263,14 @@ class NearbyViewModel @Inject constructor(
 
     fun setFuelType(type: String) {
         analytics.trackEvent("select_fuel_type", mapOf("fuel_type" to type))
+        // Every fuel type's prices are already cached/loaded — this is a pure property set, no
+        // async work needed. The panel's default list re-sorts for free since
+        // cheapestSortedStations() is derived from selectedFuelType.
         _state.value = _state.value.copy(selectedFuelType = type)
-        // Nearby mode already has every fuel type's prices cached/loaded — just re-filter for
-        // display. Cheapest mode ranks server-side per fuel type, so that genuinely needs a
-        // fresh request.
-        if (_state.value.mode == ListMode.CHEAPEST) {
-            reload()
-        }
     }
 
     fun setRadius(miles: Double) {
         _state.value = _state.value.copy(radiusMiles = miles)
-        reload()
-    }
-
-    fun setMode(mode: ListMode) {
-        analytics.trackEvent("select_mode", mapOf("mode" to mode.name.lowercase()))
-        _state.value = _state.value.copy(mode = mode, searchQuery = "")
-        searchJob?.cancel()
         reload()
     }
 
@@ -287,51 +307,37 @@ class NearbyViewModel @Inject constructor(
         )
     }
 
-    fun loadCheapest() {
+    /** Called once the one-time toggle tooltip has actually been shown (not at trigger time) —
+     *  hides it and persists the seen-flag so it never reappears, even after this ViewModel is
+     *  recreated. */
+    fun markCheapestTooltipSeen() {
+        // Chains straight into the fuel-type pill tooltip in the same state update: this method
+        // only ever runs once, on the actual first-ever dismissal of the cheapest tooltip (it's
+        // only shown while hasSeenNearbyCheapestTooltip is false), so hasSeenFuelTypePillTooltip
+        // can't already be true here — no need to re-check the store first.
+        _state.value = _state.value.copy(showCheapestTooltip = false, showFuelTypePillTooltip = true)
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
-            try {
-                val s = _state.value
-                val response = repo.getCheapest(s.selectedFuelType, s.userLat, s.userLng, s.radiusMiles)
-                // /api/prices/cheapest's station objects carry no `prices` array — only a
-                // top-level price_pence for the one matched fuel type — so StationRow/the map
-                // markers' `station.prices.filter(...)` found nothing and rendered no price at
-                // all. Synthesize the single-entry list they expect (mirrors fuel-web's page.tsx
-                // fix for the same endpoint shape). Also sorted client-side by price ascending —
-                // not just relying on the backend's order — so "Cheapest" always reads
-                // cheapest-first.
-                _state.value = s.copy(
-                    isLoading = false,
-                    stations = response.results
-                        .sortedBy { it.pricePence }
-                        .map { entry ->
-                            entry.station.copy(
-                                distanceMiles = entry.distanceMiles,
-                                prices = listOf(
-                                    PriceDto(
-                                        fuelType = s.selectedFuelType,
-                                        pricePence = entry.pricePence,
-                                        reportedAt = "",
-                                    )
-                                ),
-                            )
-                        },
-                    discrepancyReportUrl = response.discrepancyReportUrl,
-                )
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = e.message)
-            }
+            preferencesStore.markNearbyCheapestTooltipSeen()
+        }
+    }
+
+    /** Called once the fuel-type pill's one-time tooltip has actually been shown (not at trigger
+     *  time) — hides it and persists the seen-flag so it never reappears, even after this
+     *  ViewModel is recreated. Mirrors [markCheapestTooltipSeen]. */
+    fun markFuelTypePillTooltipSeen() {
+        _state.value = _state.value.copy(showFuelTypePillTooltip = false)
+        viewModelScope.launch {
+            preferencesStore.markFuelTypePillTooltipSeen()
         }
     }
 
     private fun reload(forceRefresh: Boolean = false) {
         val s = _state.value
         if (s.searchQuery.length >= 2) {
-            // Search and cheapest hit no local cache, so forceRefresh is a no-op for them.
+            // Search hits no local cache, so forceRefresh is a no-op for it.
             setSearchQuery(s.searchQuery)
-        } else when (s.mode) {
-            ListMode.NEARBY -> loadNearby(forceRefresh)
-            ListMode.CHEAPEST -> loadCheapest()
+        } else {
+            loadNearby(forceRefresh)
         }
     }
 }
