@@ -53,6 +53,15 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    testOptions {
+        unitTests {
+            // The data layer under test is plain Kotlin, but the classes it sits alongside pull in
+            // android.* stubs on the unit-test classpath; returning defaults instead of throwing
+            // keeps those incidental references from failing an otherwise pure-JVM test.
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {
@@ -103,4 +112,12 @@ dependencies {
     // Compose UI graphics (FuelTypes.COLORS uses androidx.compose.ui.graphics.Color)
     implementation(platform("androidx.compose:compose-bom:2024.11.00"))
     implementation("androidx.compose.ui:ui-graphics")
+
+    // Local JVM unit tests (./gradlew test). MockWebServer is used to assert the *shape of the
+    // outgoing request* — specifically that an absent lat/lng really is absent from the URL rather
+    // than serialised as 0 — which no amount of mocking the Retrofit interface could prove.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    testImplementation("io.mockk:mockk:1.13.13")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }

@@ -1,5 +1,6 @@
 package uk.co.fuelprices.data.repository
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,6 +15,15 @@ import kotlin.math.cos
 
 private const val CACHE_TTL_MILLIS = 24 * 60 * 60 * 1000L // 24 hours
 private const val MILES_PER_DEGREE_LAT = 69.0
+
+// How many search results the user actually sees — matches FuelPricesApi.searchStations' `limit`,
+// so an offline search returns the same number of rows as an online one.
+private const val SEARCH_RESULT_LIMIT = 20
+
+// How many rows the offline search pulls out of Room before sorting by distance. Wider than
+// SEARCH_RESULT_LIMIT because the SQL can't sort by distance itself, but still capped so a
+// one-letter-ish query can't drag the whole cache into memory.
+private const val SEARCH_CANDIDATE_LIMIT = 200
 
 @Singleton
 class FuelRepository @Inject constructor(
@@ -117,12 +127,45 @@ class FuelRepository @Inject constructor(
         }
     }
 
-    suspend fun searchStations(query: String): StationListResponse {
+    /**
+     * Text search, server-ranked. [lat]/[lng] are the user's current fix, when there is one —
+     * supplied together they make distance the final tie-break *within* each of the server's
+     * relevance tiers and add `distance_miles` to every result. They're nullable because there is
+     * no fix before the first GPS callback: in that case they must be omitted from the request
+     * entirely (Retrofit drops null `@Query` values), never sent as 0, and the server orders on
+     * relevance alone. A half-fix (one coordinate present, the other not) is treated as no fix.
+     *
+     * The offline fallback mirrors that: distances are computed and the results distance-sorted
+     * only when both coordinates are present, otherwise the cache's own order is left alone.
+     */
+    suspend fun searchStations(
+        query: String,
+        lat: Double? = null,
+        lng: Double? = null,
+    ): StationListResponse {
+        val hasFix = lat != null && lng != null
+        val originLat = lat.takeIf { hasFix }
+        val originLng = lng.takeIf { hasFix }
         return try {
-            api.searchStations(query)
+            api.searchStations(query, lat = originLat, lng = originLng)
+        } catch (e: CancellationException) {
+            // A newer keystroke cancelled this search. That's not a network failure, so it must
+            // not fall through to the cache — doing so runs a wide LIKE scan for a query the user
+            // has already moved on from, and hands the caller results for stale input.
+            throw e
         } catch (e: Exception) {
-            val cached = dao.searchStations(query)
-            StationListResponse(cached.size, cached.map { it.toDto(originLat = null, originLng = null) })
+            // The SQL query can't sort by distance (no haversine in SQLite), so its LIMIT would
+            // otherwise hand us an arbitrary subset to sort — the nearest match could be the row
+            // just past the cut. Pull a wider candidate pool, sort, then trim to the display
+            // limit, so the sort decides what the user sees rather than SQLite's row order.
+            val cached = dao.searchStations(query, limit = SEARCH_CANDIDATE_LIMIT)
+                .map { it.toDto(originLat, originLng) }
+            val ordered = if (originLat != null && originLng != null) {
+                cached.sortedBy { it.distanceMiles ?: Double.MAX_VALUE }
+            } else {
+                cached
+            }.take(SEARCH_RESULT_LIMIT)
+            StationListResponse(ordered.size, ordered)
         }
     }
 
@@ -274,7 +317,7 @@ class FuelRepository @Inject constructor(
 
     /** [originLat]/[originLng] recompute distanceMiles client-side — it's relative to the query
      * point, not an intrinsic station property, so it isn't stored on the entity. Pass null when
-     * there's no meaningful origin (e.g. a lookup by id or text search). */
+     * there's no meaningful origin (e.g. a lookup by id, or a text search with no GPS fix). */
     private fun StationWithPrices.toDto(originLat: Double?, originLng: Double?) = StationDto(
         id = station.id, govId = station.govId, name = station.name,
         brand = station.brand, operator = station.operator,
