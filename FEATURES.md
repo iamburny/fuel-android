@@ -53,20 +53,27 @@ Find fuel stations near you on a live map, with a searchable/filterable list.
 - **Station pins** coloured per the selected fuel type, each labelled with the cheapest price of
   that fuel type at the station (e.g. "129.9p") or "No price."
 - **Fuel-type pill** (top-right) always shows the current fuel type; tap to cycle through all six.
-- **Drag to explore:** panning the map loads stations for the newly visible viewport (pins update
-  to the dragged area). The bottom list stays anchored to your GPS location regardless of drag.
-  The dragged-to position and zoom are remembered — opening a station's Detail screen and coming
-  back restores the map exactly where you left it, rather than snapping back to GPS.
+- **Drag to explore:** panning the map loads stations for the newly visible viewport — both the
+  map pins *and* the list below update to the dragged-to area (no network call for the list; it's
+  a client-side re-sort of the same data behind the pins). The dragged-to position and zoom are
+  remembered — opening a station's Detail screen and coming back restores the map exactly where
+  you left it, rather than snapping back to GPS.
 - **Recenter button** (bottom-left) appears once you've dragged away; tap to jump the camera back
   and restore the GPS pin set.
-- **Search / filter panel** (toggled top-right): a fixed "Search by name, postcode, or brand"
-  field (debounced, needs 2+ chars); a **Nearby / Cheapest** mode toggle (hidden while searching);
-  a scrollable row of fuel-type filter chips; and the station list.
+- **Search / list panel** (toggled top-right via a coin icon): a fixed "Search by name, postcode,
+  or brand" field (debounced, needs 2+ chars); a scrollable row of fuel-type filter chips; and the
+  station list. A one-time tooltip points at the toggle the first time it's shown, then never
+  again.
+- **Default list is cheapest-first:** while not searching, the list shows exactly what's pinned on
+  the map, sorted ascending by price for the selected fuel type — stations with no price for that
+  fuel type are omitted (with an explicit "No nearby stations currently report a price" message if
+  that empties the list). Typing 2+ characters swaps the list to server search results instead,
+  unaffected by the above.
 - **Station rows** show name, brand · distance · postcode, and a bold coloured cheapest price. Tap
-  to open Detail.
+  to open Detail. "Report a price discrepancy" is the last row of the list.
 - Header attribution: "Prices sourced from the UK Government Fuel Finder scheme…"
-- **Behaviour notes:** changing fuel type in Nearby mode re-filters instantly (client-side); in
-  Cheapest mode it re-fetches from the server. Default search radius is 10 miles.
+- **Behaviour notes:** changing fuel type re-filters/re-sorts the list instantly (client-side, no
+  re-fetch). Default search radius is 10 miles.
 
 ### Prices (Prices & Trends)
 

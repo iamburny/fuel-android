@@ -33,6 +33,10 @@ data class UserPreferences(
     /** [uk.co.fuelprices.ui.components.ReleaseNoticeContent.dismissKey] of the last-dismissed
      *  release notice — re-shows automatically if the flag's variant content changes. */
     val dismissedReleaseNoticeKey: String? = null,
+    /** True once the Nearby screen's one-time "Cheapest prices" toggle tooltip has been shown.
+     *  Unlike [dismissedAnnouncementMessage]/[dismissedReleaseNoticeKey], this isn't tied to any
+     *  remote flag/content — it's a plain permanent flag that, once true, never re-arms. */
+    val hasSeenNearbyCheapestTooltip: Boolean = false,
 ) {
     /** True once there's enough info to estimate a driving cost (see FuelCostCalculator). */
     val canEstimateDriveCost: Boolean get() = mpg != null && tankCapacityLitres != null
@@ -50,6 +54,7 @@ class UserPreferencesStore @Inject constructor(@ApplicationContext private val c
     private val coffeePromptPausedUntilKey = intPreferencesKey("coffee_prompt_paused_until")
     private val dismissedAnnouncementKey = stringPreferencesKey("dismissed_announcement_message")
     private val dismissedReleaseNoticePrefKey = stringPreferencesKey("dismissed_release_notice_key")
+    private val hasSeenNearbyCheapestTooltipKey = booleanPreferencesKey("has_seen_nearby_cheapest_tooltip")
 
     val preferences: Flow<UserPreferences> = context.userPreferencesDataStore.data.map { prefs ->
         UserPreferences(
@@ -62,6 +67,7 @@ class UserPreferencesStore @Inject constructor(@ApplicationContext private val c
             coffeePromptPausedUntilOpen = prefs[coffeePromptPausedUntilKey] ?: 0,
             dismissedAnnouncementMessage = prefs[dismissedAnnouncementKey],
             dismissedReleaseNoticeKey = prefs[dismissedReleaseNoticePrefKey],
+            hasSeenNearbyCheapestTooltip = prefs[hasSeenNearbyCheapestTooltipKey] ?: false,
         )
     }
 
@@ -120,6 +126,14 @@ class UserPreferencesStore @Inject constructor(@ApplicationContext private val c
     suspend fun dismissReleaseNotice(key: String) {
         context.userPreferencesDataStore.edit { prefs ->
             prefs[dismissedReleaseNoticePrefKey] = key
+        }
+    }
+
+    /** Marks the Nearby screen's one-time "Cheapest prices" toggle tooltip as seen — permanent,
+     *  never re-armed (unlike [dismissAnnouncement]/[dismissReleaseNotice]). */
+    suspend fun markNearbyCheapestTooltipSeen() {
+        context.userPreferencesDataStore.edit { prefs ->
+            prefs[hasSeenNearbyCheapestTooltipKey] = true
         }
     }
 }

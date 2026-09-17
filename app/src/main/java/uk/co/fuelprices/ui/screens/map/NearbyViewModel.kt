@@ -36,8 +36,9 @@ data class NearbyUiState(
     val hasLocationPermission: Boolean = false,
     val error: String? = null,
     // Stations for whatever map area the user last dragged to — null until the first drag, at
-    // which point map pins switch to this instead of the GPS-anchored `stations`. The bottom
-    // list panel always keeps using `stations`, unaffected by dragging.
+    // which point map pins switch to this instead of the GPS-anchored `stations`. The search
+    // panel's default (non-search) list also switches to this via cheapestSortedStations(), so it
+    // always tracks whatever's currently pinned on the map.
     val viewportStations: List<StationDto>? = null,
     // Bumped only when the map should jump to userLat/userLng — never on every reload, so
     // changing the radius/fuel filter/mode doesn't fight a drag by snapping the camera back.
@@ -59,18 +60,18 @@ data class NearbyUiState(
     val cameraLat: Double? = null,
     val cameraLng: Double? = null,
     val cameraZoom: Float = 12f,
-    // True while the Cheapest sheet is presented over the map. Lives here (ViewModel-scoped
-    // StateFlow) rather than as local Composable state so it survives rotation for free, same as
-    // cameraLat/cameraLng.
-    val isCheapestSheetVisible: Boolean = false,
+    // True once, on first appearance, until the one-time "Cheapest prices" toggle tooltip has been
+    // shown and dismissed — see NearbyViewModel.markCheapestTooltipSeen(). Lives here (rather than
+    // local Composable state) so it survives rotation, same as cameraLat/cameraLng.
+    val showCheapestTooltip: Boolean = false,
 )
 
 /** Client-side derived view of whatever's currently pinned on the map (viewportStations after a
  *  drag, else the GPS-anchored `stations`), sorted ascending by price for `selectedFuelType` and
  *  filtered to stations that report one. No network call — this is a pure function over state
  *  already held, so it can't drift from what's actually pinned on the map, and re-evaluates live
- *  (fuel-type change / a drag while the sheet is open) since it's called fresh on every
- *  recomposition rather than cached. */
+ *  (fuel-type change / a drag while the panel is open) since it's called fresh on every
+ *  recomposition rather than cached. Backs the search panel's default (non-search) list. */
 fun NearbyUiState.cheapestSortedStations(): List<StationDto> =
     (viewportStations ?: stations)
         .mapNotNull { station ->
@@ -110,8 +111,12 @@ class NearbyViewModel @Inject constructor(
 
         viewModelScope.launch {
             // Start from the user's saved "usual fuel" preference rather than always defaulting
-            // to E10.
-            _state.value = _state.value.copy(selectedFuelType = preferencesStore.get().fuelType)
+            // to E10, and show the one-time toggle tooltip only if the user hasn't seen it yet.
+            val prefs = preferencesStore.get()
+            _state.value = _state.value.copy(
+                selectedFuelType = prefs.fuelType,
+                showCheapestTooltip = !prefs.hasSeenNearbyCheapestTooltip,
+            )
 
             // Give the permission dialog a brief window to be answered before firing the first
             // request — otherwise we load the fallback location, render it, then immediately
@@ -248,7 +253,7 @@ class NearbyViewModel @Inject constructor(
     fun setFuelType(type: String) {
         analytics.trackEvent("select_fuel_type", mapOf("fuel_type" to type))
         // Every fuel type's prices are already cached/loaded — this is a pure property set, no
-        // async work needed. The Cheapest sheet (if open) re-sorts for free since
+        // async work needed. The panel's default list re-sorts for free since
         // cheapestSortedStations() is derived from selectedFuelType.
         _state.value = _state.value.copy(selectedFuelType = type)
     }
@@ -291,27 +296,14 @@ class NearbyViewModel @Inject constructor(
         )
     }
 
-    fun showCheapestSheet() {
-        analytics.trackEvent("view_cheapest_sheet", mapOf("fuel_type" to _state.value.selectedFuelType))
-        _state.value = _state.value.copy(isCheapestSheetVisible = true)
-    }
-
-    fun dismissCheapestSheet() {
-        _state.value = _state.value.copy(isCheapestSheetVisible = false)
-    }
-
-    /** Called when a row in the Cheapest sheet is tapped: dismisses the sheet and pans/zooms the
-     *  map camera onto that station's pin (does not navigate to Detail). */
-    fun selectStationFromCheapestSheet(station: StationDto) {
-        _state.value = _state.value.copy(
-            isCheapestSheetVisible = false,
-            isOffGpsCenter = true,
-            cameraLat = station.latitude,
-            cameraLng = station.longitude,
-            cameraZoom = 15f,
-            cameraRecenterToken = _state.value.cameraRecenterToken + 1,
-        )
-        trackStationClick(station.id, "cheapest_sheet")
+    /** Called once the one-time toggle tooltip has actually been shown (not at trigger time) —
+     *  hides it and persists the seen-flag so it never reappears, even after this ViewModel is
+     *  recreated. */
+    fun markCheapestTooltipSeen() {
+        _state.value = _state.value.copy(showCheapestTooltip = false)
+        viewModelScope.launch {
+            preferencesStore.markNearbyCheapestTooltipSeen()
+        }
     }
 
     private fun reload(forceRefresh: Boolean = false) {

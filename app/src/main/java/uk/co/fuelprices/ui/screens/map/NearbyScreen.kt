@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.LocalGasStation
+import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -21,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import uk.co.fuelprices.data.api.FuelTypes
@@ -69,16 +71,33 @@ fun NearbyScreen(
                             Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                         }
                     }
-                    IconButton(onClick = {
-                        // Only clear (and thus re-fetch) if there was actually a search in
-                        // progress — closing an empty search panel shouldn't re-fetch anything.
-                        if (showPanel && state.searchQuery.isNotEmpty()) viewModel.setSearchQuery("")
-                        showPanel = !showPanel
-                    }) {
-                        Icon(
-                            if (showPanel) Icons.Default.Clear else Icons.Default.Search,
-                            contentDescription = if (showPanel) "Close" else "Search",
-                        )
+                    val tooltipState = rememberTooltipState()
+                    // One-time coach-mark pointing at the toggle, shown once ever (see
+                    // NearbyUiState.showCheapestTooltip) — only ever while the panel is closed,
+                    // and marked seen only after it actually shows, so an interruption mid-first
+                    // show doesn't burn the user's only chance to see it.
+                    LaunchedEffect(state.showCheapestTooltip, showPanel) {
+                        if (state.showCheapestTooltip && !showPanel) {
+                            tooltipState.show()
+                            viewModel.markCheapestTooltipSeen()
+                        }
+                    }
+                    TooltipBox(
+                        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                        tooltip = { PlainTooltip { Text("See the cheapest fuel prices near you") } },
+                        state = tooltipState,
+                    ) {
+                        IconButton(onClick = {
+                            // Only clear (and thus re-fetch) if there was actually a search in
+                            // progress — closing an empty search panel shouldn't re-fetch anything.
+                            if (showPanel && state.searchQuery.isNotEmpty()) viewModel.setSearchQuery("")
+                            showPanel = !showPanel
+                        }) {
+                            Icon(
+                                if (showPanel) Icons.Default.Clear else Icons.Default.MonetizationOn,
+                                contentDescription = if (showPanel) "Close" else "Cheapest prices",
+                            )
+                        }
                     }
                 }
             )
@@ -88,8 +107,8 @@ fun NearbyScreen(
         AnnouncementBanner()
         Box(Modifier.weight(1f).fillMaxWidth()) {
             // Falls back to the GPS-anchored station set until the user's first drag produces a
-            // viewport load; the bottom list panel below always keeps using state.stations,
-            // unaffected by dragging.
+            // viewport load; the search panel's default (non-search) list below tracks the same
+            // set via state.cheapestSortedStations(), so it always matches what's pinned here.
             val mapMarkers = if (!state.isLoading) {
                 (state.viewportStations ?: state.stations).map { station ->
                     val cheapestPrice = station.prices
@@ -264,26 +283,6 @@ fun NearbyScreen(
                             singleLine = true,
                         )
 
-                        // "Cheapest" trigger — opens a modal listing the exact same stations
-                        // currently pinned on the map, just re-sorted by price (no network call,
-                        // no swap of the map's own dataset). Kept behind the same searchQuery
-                        // guard the old mode picker used, so the two entry points stay mutually
-                        // exclusive by construction.
-                        if (state.searchQuery.length < 2) {
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp),
-                            ) {
-                                AssistChip(
-                                    onClick = { viewModel.showCheapestSheet() },
-                                    label = { Text("Cheapest") },
-                                )
-                            }
-
-                            Spacer(Modifier.height(4.dp))
-                        }
-
                         // Fuel type chips
                         Row(
                             Modifier
@@ -319,19 +318,44 @@ fun NearbyScreen(
                                 Text("Error: ${state.error}", color = MaterialTheme.colorScheme.error)
                             }
                         } else {
-                            LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
-                                item {
-                                    // Compliance: real, tappable link to the official gov.uk
-                                    // source (required by the Misleading Claims policy — a
-                                    // plain-text mention of "gov.uk/..." is not an accessible
-                                    // link), plus the discrepancy-report action it referred to.
-                                    DataAttributionNotice()
+                            // Search results (searchQuery.length >= 2) use state.stations as
+                            // returned by the search API, untouched by any of the below. The
+                            // default (non-search) list instead tracks whatever's currently
+                            // pinned on the map, cheapest-first, via cheapestSortedStations() —
+                            // which drops stations with no price for selectedFuelType, so an
+                            // explicit empty state is needed for that case.
+                            val isSearching = state.searchQuery.length >= 2
+                            val listStations = if (isSearching) state.stations else state.cheapestSortedStations()
+                            if (!isSearching && !state.isLoading && listStations.isEmpty()) {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .weight(1f)
+                                        .padding(32.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        "No nearby stations currently report a ${fuelLabel(state.selectedFuelType)} price.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        textAlign = TextAlign.Center,
+                                    )
                                 }
+                            } else {
+                                LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+                                    items(listStations, key = { it.id }) { station ->
+                                        StationRow(station, state.selectedFuelType) {
+                                            viewModel.trackStationClick(station.id, "list")
+                                            onStationClick(station.id)
+                                        }
+                                    }
 
-                                items(state.stations, key = { it.id }) { station ->
-                                    StationRow(station, state.selectedFuelType) {
-                                        viewModel.trackStationClick(station.id, "list")
-                                        onStationClick(station.id)
+                                    item {
+                                        // Compliance: real, tappable link to the official gov.uk
+                                        // source (required by the Misleading Claims policy — a
+                                        // plain-text mention of "gov.uk/..." is not an accessible
+                                        // link), plus the discrepancy-report action it referred
+                                        // to. Last row, after all stations.
+                                        DataAttributionNotice()
                                     }
                                 }
                             }
@@ -342,20 +366,10 @@ fun NearbyScreen(
         }
         }
     }
-
-    if (state.isCheapestSheetVisible) {
-        CheapestSheet(
-            stations = state.cheapestSortedStations(),
-            fuelType = state.selectedFuelType,
-            isLoading = state.isLoading,
-            onDismiss = viewModel::dismissCheapestSheet,
-            onStationSelected = viewModel::selectStationFromCheapestSheet,
-        )
-    }
 }
 
 @Composable
-internal fun StationRow(station: StationDto, fuelType: String, onClick: () -> Unit) {
+private fun StationRow(station: StationDto, fuelType: String, onClick: () -> Unit) {
     val price = station.prices
         .filter { it.fuelType == fuelType }
         .minByOrNull { it.pricePence }
