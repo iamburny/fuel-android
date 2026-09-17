@@ -382,7 +382,7 @@ fun NearbyScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .fillMaxHeight(0.8f),
+                        .fillMaxHeight(0.67f),
                     shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
                     tonalElevation = 4.dp,
                 ) {
