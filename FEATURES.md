@@ -62,10 +62,14 @@ Find fuel stations near you on a live map, with a searchable/filterable list.
   and restore the GPS pin set.
 - **Search / list panel** (toggled top-right via a coin icon): a fixed "Search by name, postcode,
   or brand" field (debounced, needs 2+ chars); a scrollable row of fuel-type filter chips; and the
-  station list. A speech-bubble coach mark appears below the toggle button the first time it's
-  shown, pointing up at it; it stays on screen (it doesn't auto-hide) until tapped away — tapping
-  the bubble itself, tapping anywhere else on screen, or opening the panel all dismiss it — after
-  which it's never shown again.
+  station list. Search matches case-insensitively on name, postcode, brand and town, and results
+  come back ranked by relevance (an exact name or postcode match first, then a name prefix, then
+  everything else). When there's a GPS fix, it's sent with the query and distance breaks ties
+  *within* a relevance tier. Before the first fix the query is sent without any position at all
+  and results are ranked on relevance alone. A speech-bubble coach mark appears below the toggle
+  button the first time it's shown, pointing up at it; it stays on screen (it doesn't auto-hide)
+  until tapped away — tapping the bubble itself, tapping anywhere else on screen, or opening the
+  panel all dismiss it — after which it's never shown again.
 - **Default list is cheapest-first:** while not searching, the list shows exactly what's pinned on
   the map, sorted ascending by price for the selected fuel type — stations with no price for that
   fuel type are omitted (with an explicit "No nearby stations currently report a price" message,
@@ -196,6 +200,12 @@ remove), and discrepancy reporting.
 - **Stations are cached** (Room, 24-hour TTL). Nearby and map-bounds queries are **cache-first**;
   on a network failure they fall back to cached stations. A single nearby fetch deliberately omits
   the fuel-type filter so the cache is populated for all fuel types.
+- **Search is network-first**, falling back to the cache only when the request fails. The offline
+  fallback matches the same four fields the server does (name, postcode, brand, town) and, when
+  there's a GPS fix, orders results nearest-first and shows distances — so an offline search reads
+  the same way an online one does. It can't reproduce the server's relevance ranking, though, so
+  offline ordering is purely by distance, and a very broad query against a large cache is sorted
+  from a capped pool of matches rather than every last one.
 - The **manual Refresh** button on Nearby bypasses the cache and forces a live network fetch.
 - **Prices are never cached** — cheapest, averages, history, and trends require connectivity.
 - Cached stations retain **full detail** — phone, county, second address line, amenities, opening

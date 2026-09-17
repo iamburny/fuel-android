@@ -81,15 +81,28 @@ interface StationDao {
     @Query("SELECT * FROM stations WHERE id = :id")
     suspend fun getStationById(id: Int): StationWithPrices?
 
+    /**
+     * Offline fallback for the server's `/api/stations/search`. Matches the same four fields the
+     * server does — name, postcode, brand and **town** (town was missing here for a long time,
+     * silently making offline search narrower than online search for anyone typing a place name).
+     *
+     * There is deliberately no `ORDER BY`: the caller ([uk.co.fuelprices.data.repository.FuelRepository])
+     * sorts by distance in Kotlin when it has a fix, since SQLite can't do haversine. [limit] is
+     * therefore a *candidate* cap here, not the number of rows the user sees — the repository
+     * passes a wider cap and trims to the display limit after sorting, so the nearest matches
+     * aren't lost to an arbitrary pre-sort truncation. It has no default for that reason: a
+     * caller passing the display limit here would silently reintroduce that truncation.
+     */
     @Transaction
     @Query("""
-        SELECT * FROM stations 
-        WHERE name LIKE '%' || :query || '%' 
+        SELECT * FROM stations
+        WHERE name LIKE '%' || :query || '%'
            OR postcode LIKE '%' || :query || '%'
            OR brand LIKE '%' || :query || '%'
+           OR town LIKE '%' || :query || '%'
         LIMIT :limit
     """)
-    suspend fun searchStations(query: String, limit: Int = 20): List<StationWithPrices>
+    suspend fun searchStations(query: String, limit: Int): List<StationWithPrices>
 
     @Upsert
     suspend fun upsertStations(stations: List<StationEntity>)

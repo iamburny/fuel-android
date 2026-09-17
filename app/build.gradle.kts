@@ -94,6 +94,14 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    testOptions {
+        unitTests {
+            // ViewModel tests mock android.location.Location rather than constructing one; this
+            // keeps any incidental android.* reference returning a default instead of throwing.
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {
@@ -137,4 +145,9 @@ dependencies {
 
     // Android Auto phone projection (Car App Library)
     implementation("androidx.car.app:app-projected:1.7.0")
+
+    // Local JVM unit tests (./gradlew test)
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    testImplementation("io.mockk:mockk:1.13.13")
 }
