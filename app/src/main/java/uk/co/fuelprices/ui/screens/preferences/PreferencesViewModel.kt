@@ -20,7 +20,7 @@ data class PreferencesUiState(
     val fuelType: String = "E10",
     val mpgText: String = "",
     val tankCapacityText: String = "",
-    val useLongFuelNames: Boolean = false,
+    val useLongFuelNames: Boolean = true,
     val themeMode: String = "SYSTEM",
     val justSaved: Boolean = false,
     val isLoggedIn: Boolean = false,

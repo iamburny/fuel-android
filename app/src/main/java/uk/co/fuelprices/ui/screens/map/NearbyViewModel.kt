@@ -64,6 +64,12 @@ data class NearbyUiState(
     // shown and dismissed — see NearbyViewModel.markCheapestTooltipSeen(). Lives here (rather than
     // local Composable state) so it survives rotation, same as cameraLat/cameraLng.
     val showCheapestTooltip: Boolean = false,
+    // True once the fuel-type pill's one-time tooltip should be shown — eligible only once the
+    // cheapest-toggle tooltip above has actually been marked seen (see
+    // NearbyViewModel.markCheapestTooltipSeen() and its init-time equivalent for returning users).
+    // Unlike showCheapestTooltip this isn't gated on showPanel — the pill sits on the map itself
+    // and is visible regardless of the search panel's open/closed state.
+    val showFuelTypePillTooltip: Boolean = false,
 )
 
 /** Client-side derived view of whatever's currently pinned on the map (viewportStations after a
@@ -116,6 +122,11 @@ class NearbyViewModel @Inject constructor(
             _state.value = _state.value.copy(
                 selectedFuelType = prefs.fuelType,
                 showCheapestTooltip = !prefs.hasSeenNearbyCheapestTooltip,
+                // Chained: for a returning user who already dismissed the cheapest-toggle tooltip
+                // in a prior session but hasn't yet seen this one, it becomes eligible immediately.
+                // A user still on their first-ever cheapest-toggle tooltip gets this later, when
+                // markCheapestTooltipSeen() flips it in the same state update.
+                showFuelTypePillTooltip = prefs.hasSeenNearbyCheapestTooltip && !prefs.hasSeenFuelTypePillTooltip,
             )
 
             // Give the permission dialog a brief window to be answered before firing the first
@@ -300,9 +311,23 @@ class NearbyViewModel @Inject constructor(
      *  hides it and persists the seen-flag so it never reappears, even after this ViewModel is
      *  recreated. */
     fun markCheapestTooltipSeen() {
-        _state.value = _state.value.copy(showCheapestTooltip = false)
+        // Chains straight into the fuel-type pill tooltip in the same state update: this method
+        // only ever runs once, on the actual first-ever dismissal of the cheapest tooltip (it's
+        // only shown while hasSeenNearbyCheapestTooltip is false), so hasSeenFuelTypePillTooltip
+        // can't already be true here — no need to re-check the store first.
+        _state.value = _state.value.copy(showCheapestTooltip = false, showFuelTypePillTooltip = true)
         viewModelScope.launch {
             preferencesStore.markNearbyCheapestTooltipSeen()
+        }
+    }
+
+    /** Called once the fuel-type pill's one-time tooltip has actually been shown (not at trigger
+     *  time) — hides it and persists the seen-flag so it never reappears, even after this
+     *  ViewModel is recreated. Mirrors [markCheapestTooltipSeen]. */
+    fun markFuelTypePillTooltipSeen() {
+        _state.value = _state.value.copy(showFuelTypePillTooltip = false)
+        viewModelScope.launch {
+            preferencesStore.markFuelTypePillTooltipSeen()
         }
     }
 

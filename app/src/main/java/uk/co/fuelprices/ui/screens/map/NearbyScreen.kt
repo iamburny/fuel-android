@@ -93,7 +93,7 @@ fun NearbyScreen(
                     // underneath — that's what makes tapping the button or tapping elsewhere both
                     // count as "dismiss" without any extra wiring here. A tap *inside* the
                     // tooltip's own bounds is not treated as "outside" by Popup, so
-                    // CheapestTooltipBubble below adds its own clickable-to-dismiss.
+                    // SpeechBubbleTooltip below adds its own clickable-to-dismiss.
                     val tooltipState = rememberTooltipState(isPersistent = true)
                     // One-time coach-mark pointing at the toggle, shown once ever (see
                     // NearbyUiState.showCheapestTooltip) — only ever while the panel is closed.
@@ -108,7 +108,7 @@ fun NearbyScreen(
                     // (material3-android-1.3.1-sources.jar, Tooltip.kt's TooltipStateImpl /
                     // internal/BasicTooltip.android.kt's TooltipPopup): with isPersistent = true,
                     // show() suspends via suspendCancellableCoroutine, stashing the continuation in
-                    // a private `job`. dismiss() (called from CheapestTooltipBubble's own
+                    // a private `job`. dismiss() (called from SpeechBubbleTooltip's own
                     // clickable, or from TooltipPopup's onDismissRequest on an outside tap) only
                     // sets `transition.targetState = false` — it never resumes or cancels that
                     // continuation. The *only* thing that does is BasicTooltipBox's
@@ -139,7 +139,7 @@ fun NearbyScreen(
                         // (TooltipDefaults.rememberPlainTooltipPositionProvider()).
                         positionProvider = rememberBelowAnchorTooltipPositionProvider(),
                         tooltip = {
-                            CheapestTooltipBubble(
+                            SpeechBubbleTooltip(
                                 state = tooltipState,
                                 text = "See the cheapest fuel prices near you",
                             )
@@ -229,25 +229,59 @@ fun NearbyScreen(
             // Currently filtered fuel type, always visible regardless of panel state. Tapping it
             // cycles to the next fuel type — a quick way to flip through prices without opening
             // the search panel's chip row.
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(12.dp)
-                    .clickable {
-                        val nextIndex = (FuelTypes.ALL.indexOf(state.selectedFuelType) + 1) % FuelTypes.ALL.size
-                        viewModel.setFuelType(FuelTypes.ALL[nextIndex])
-                    },
-                shape = RoundedCornerShape(50),
-                color = FuelTypes.color(state.selectedFuelType),
-                shadowElevation = 4.dp,
+            //
+            // Second, chained one-time coach-mark: shares the same below-anchor speech-bubble
+            // machinery as the cheapest-toggle tooltip above (rememberBelowAnchorTooltipPositionProvider,
+            // SpeechBubbleTooltip) and the exact same isVisible-transition dismiss-detection
+            // pattern — see the top-bar tooltip's comments for why that (not show() returning)
+            // is what makes "shown once ever" actually work. Unlike the top-bar tooltip, this one
+            // is NOT gated on showPanel — the pill lives on the map itself and stays visible
+            // regardless of the search panel's open/closed state.
+            val fuelPillTooltipState = rememberTooltipState(isPersistent = true)
+            LaunchedEffect(state.showFuelTypePillTooltip) {
+                if (state.showFuelTypePillTooltip) {
+                    fuelPillTooltipState.show()
+                }
+            }
+            LaunchedEffect(fuelPillTooltipState) {
+                var wasVisible = false
+                snapshotFlow { fuelPillTooltipState.isVisible }.collect { visible ->
+                    if (wasVisible && !visible) {
+                        viewModel.markFuelTypePillTooltipSeen()
+                    }
+                    wasVisible = visible
+                }
+            }
+            TooltipBox(
+                positionProvider = rememberBelowAnchorTooltipPositionProvider(),
+                tooltip = {
+                    SpeechBubbleTooltip(
+                        state = fuelPillTooltipState,
+                        text = "Tap to cycle between petrol, diesel, and other fuel types.",
+                    )
+                },
+                state = fuelPillTooltipState,
+                modifier = Modifier.align(Alignment.TopEnd),
             ) {
-                Text(
-                    fuelLabel(state.selectedFuelType),
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                )
+                Surface(
+                    modifier = Modifier
+                        .padding(12.dp)
+                        .clickable {
+                            val nextIndex = (FuelTypes.ALL.indexOf(state.selectedFuelType) + 1) % FuelTypes.ALL.size
+                            viewModel.setFuelType(FuelTypes.ALL[nextIndex])
+                        },
+                    shape = RoundedCornerShape(50),
+                    color = FuelTypes.color(state.selectedFuelType),
+                    shadowElevation = 4.dp,
+                ) {
+                    Text(
+                        fuelLabel(state.selectedFuelType),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
             }
 
             // Shown only once the user has dragged away from their GPS location — auto-recenter
@@ -469,12 +503,16 @@ private fun StationRow(station: StationDto, fuelType: String, onClick: () -> Uni
     HorizontalDivider()
 }
 
-// --- Cheapest-toggle coach-mark tooltip: below-anchor speech bubble ------------------------
+// --- Shared coach-mark tooltip machinery: below-anchor speech bubble -----------------------
+// Used by both the cheapest-toggle tooltip (top bar) and the fuel-type pill tooltip (map) —
+// extracted here rather than duplicated so the position-provider/shape/dismiss-detection logic
+// (in particular the isVisible-transition-based seen-marking, see NearbyScreen's two
+// snapshotFlow { tooltipState.isVisible } blocks) only exists once.
 
-private val CheapestTooltipTailWidth = 16.dp
-private val CheapestTooltipTailHeight = 8.dp
-private val CheapestTooltipCornerRadius = 8.dp
-private val CheapestTooltipAnchorGap = 4.dp
+private val SpeechBubbleTailWidth = 16.dp
+private val SpeechBubbleTailHeight = 8.dp
+private val SpeechBubbleCornerRadius = 8.dp
+private val SpeechBubbleAnchorGap = 4.dp
 
 /**
  * [PopupPositionProvider] that places the tooltip BELOW its anchor, horizontally centered under
@@ -486,13 +524,13 @@ private val CheapestTooltipAnchorGap = 4.dp
  *
  * [gap] is the vertical space left between the anchor's bottom edge and the tip of the bubble's
  * tail. The tail itself is drawn as part of the popup content (see [rememberSpeechBubbleShape]),
- * occupying the content's own top [CheapestTooltipTailHeight] — so a small [gap] (not
- * [CheapestTooltipTailHeight] itself) is enough for the tail to read as touching the anchor
+ * occupying the content's own top [SpeechBubbleTailHeight] — so a small [gap] (not
+ * [SpeechBubbleTailHeight] itself) is enough for the tail to read as touching the anchor
  * without overlapping it.
  */
 @Composable
 private fun rememberBelowAnchorTooltipPositionProvider(
-    gap: Dp = CheapestTooltipAnchorGap,
+    gap: Dp = SpeechBubbleAnchorGap,
 ): PopupPositionProvider {
     val gapPx = with(LocalDensity.current) { gap.roundToPx() }
     return remember(gapPx) {
@@ -520,16 +558,16 @@ private fun rememberBelowAnchorTooltipPositionProvider(
  * form the tail, on to the top-right corner, then standard quarter-circle [arcTo] calls for each
  * rounded corner.
  *
- * The tail occupies the shape's own top [CheapestTooltipTailHeight] (the rounded body starts
+ * The tail occupies the shape's own top [SpeechBubbleTailHeight] (the rounded body starts
  * there, not at y = 0) — callers must pad their content below that so text doesn't render into
  * the notch.
  */
 @Composable
 private fun rememberSpeechBubbleShape(): Shape {
     val density = LocalDensity.current
-    val tailWidthPx = with(density) { CheapestTooltipTailWidth.toPx() }
-    val tailHeightPx = with(density) { CheapestTooltipTailHeight.toPx() }
-    val cornerRadiusPx = with(density) { CheapestTooltipCornerRadius.toPx() }
+    val tailWidthPx = with(density) { SpeechBubbleTailWidth.toPx() }
+    val tailHeightPx = with(density) { SpeechBubbleTailHeight.toPx() }
+    val cornerRadiusPx = with(density) { SpeechBubbleCornerRadius.toPx() }
     return remember(tailWidthPx, tailHeightPx, cornerRadiusPx) {
         GenericShape { size, _ ->
             val tailHalfWidth = tailWidthPx / 2f
@@ -588,7 +626,7 @@ private fun rememberSpeechBubbleShape(): Shape {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CheapestTooltipBubble(state: TooltipState, text: String) {
+private fun SpeechBubbleTooltip(state: TooltipState, text: String) {
     Surface(
         shape = rememberSpeechBubbleShape(),
         color = TooltipDefaults.plainTooltipContainerColor,
@@ -606,7 +644,7 @@ private fun CheapestTooltipBubble(state: TooltipState, text: String) {
                 start = 12.dp,
                 end = 12.dp,
                 bottom = 8.dp,
-                top = CheapestTooltipTailHeight + 8.dp,
+                top = SpeechBubbleTailHeight + 8.dp,
             ),
         )
     }
