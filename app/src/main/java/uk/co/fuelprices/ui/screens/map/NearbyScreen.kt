@@ -2,10 +2,12 @@ package uk.co.fuelprices.ui.screens.map
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -20,10 +22,19 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.PopupPositionProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import uk.co.fuelprices.data.api.FuelTypes
 import uk.co.fuelprices.data.api.StationDto
@@ -71,11 +82,24 @@ fun NearbyScreen(
                             Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                         }
                     }
-                    val tooltipState = rememberTooltipState()
+                    // isPersistent = true: per Material3's TooltipState (see
+                    // rememberTooltipState()'s KDoc, androidx.compose.material3 1.3.1) a
+                    // non-persistent tooltip auto-dismisses after a short (1.5s) timeout, while a
+                    // persistent one "will only be dismissed when the user clicks outside the
+                    // bounds of the tooltip or if TooltipState.dismiss() is called". TooltipBox's
+                    // underlying Popup defaults dismissOnClickOutside = true and is focusable, so
+                    // an outside tap (including on the anchor IconButton itself, or anywhere else
+                    // on screen) is consumed to dismiss it rather than reaching whatever's
+                    // underneath — that's what makes tapping the button or tapping elsewhere both
+                    // count as "dismiss" without any extra wiring here. A tap *inside* the
+                    // tooltip's own bounds is not treated as "outside" by Popup, so
+                    // CheapestTooltipBubble below adds its own clickable-to-dismiss.
+                    val tooltipState = rememberTooltipState(isPersistent = true)
                     // One-time coach-mark pointing at the toggle, shown once ever (see
                     // NearbyUiState.showCheapestTooltip) — only ever while the panel is closed,
-                    // and marked seen only after it actually shows, so an interruption mid-first
-                    // show doesn't burn the user's only chance to see it.
+                    // and marked seen only once show() returns (i.e. only after the user actually
+                    // dismisses it, since it's now persistent), so an interruption mid-first show
+                    // doesn't burn the user's only chance to see it.
                     LaunchedEffect(state.showCheapestTooltip, showPanel) {
                         if (state.showCheapestTooltip && !showPanel) {
                             tooltipState.show()
@@ -83,8 +107,16 @@ fun NearbyScreen(
                         }
                     }
                     TooltipBox(
-                        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                        tooltip = { PlainTooltip { Text("See the cheapest fuel prices near you") } },
+                        // Custom below-anchor placement — Material3 only ships an
+                        // above-anchor-with-below-fallback provider
+                        // (TooltipDefaults.rememberPlainTooltipPositionProvider()).
+                        positionProvider = rememberBelowAnchorTooltipPositionProvider(),
+                        tooltip = {
+                            CheapestTooltipBubble(
+                                state = tooltipState,
+                                text = "See the cheapest fuel prices near you",
+                            )
+                        },
                         state = tooltipState,
                     ) {
                         IconButton(onClick = {
@@ -401,4 +433,147 @@ private fun StationRow(station: StationDto, fuelType: String, onClick: () -> Uni
         },
     )
     HorizontalDivider()
+}
+
+// --- Cheapest-toggle coach-mark tooltip: below-anchor speech bubble ------------------------
+
+private val CheapestTooltipTailWidth = 16.dp
+private val CheapestTooltipTailHeight = 8.dp
+private val CheapestTooltipCornerRadius = 8.dp
+private val CheapestTooltipAnchorGap = 4.dp
+
+/**
+ * [PopupPositionProvider] that places the tooltip BELOW its anchor, horizontally centered under
+ * it — unlike [TooltipDefaults.rememberPlainTooltipPositionProvider], which prefers above the
+ * anchor (falling back to below only if there's no room above). Verified against the real
+ * [PopupPositionProvider] interface (androidx.compose.ui:ui-android 1.7.5 sources):
+ * `calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection,
+ * popupContentSize: IntSize): IntOffset`, both bounds/offset window-relative.
+ *
+ * [gap] is the vertical space left between the anchor's bottom edge and the tip of the bubble's
+ * tail. The tail itself is drawn as part of the popup content (see [rememberSpeechBubbleShape]),
+ * occupying the content's own top [CheapestTooltipTailHeight] — so a small [gap] (not
+ * [CheapestTooltipTailHeight] itself) is enough for the tail to read as touching the anchor
+ * without overlapping it.
+ */
+@Composable
+private fun rememberBelowAnchorTooltipPositionProvider(
+    gap: Dp = CheapestTooltipAnchorGap,
+): PopupPositionProvider {
+    val gapPx = with(LocalDensity.current) { gap.roundToPx() }
+    return remember(gapPx) {
+        object : PopupPositionProvider {
+            override fun calculatePosition(
+                anchorBounds: IntRect,
+                windowSize: IntSize,
+                layoutDirection: LayoutDirection,
+                popupContentSize: IntSize,
+            ): IntOffset {
+                val x = anchorBounds.left + (anchorBounds.width - popupContentSize.width) / 2
+                val y = anchorBounds.bottom + gapPx
+                return IntOffset(x, y)
+            }
+        }
+    }
+}
+
+/**
+ * Speech-bubble [Shape]: a rounded-rectangle body with a small triangular tail centered on its
+ * top edge, pointing straight up — towards the anchor button the tooltip now sits below. Built
+ * with [GenericShape] (`Path.(size: Size, layoutDirection: LayoutDirection) -> Unit`, per
+ * androidx.compose.foundation:foundation-android 1.7.5 sources) by tracing the outline clockwise
+ * from just right of the top-left corner: across the top edge, detouring up-and-back-down to
+ * form the tail, on to the top-right corner, then standard quarter-circle [arcTo] calls for each
+ * rounded corner.
+ *
+ * The tail occupies the shape's own top [CheapestTooltipTailHeight] (the rounded body starts
+ * there, not at y = 0) — callers must pad their content below that so text doesn't render into
+ * the notch.
+ */
+@Composable
+private fun rememberSpeechBubbleShape(): Shape {
+    val density = LocalDensity.current
+    val tailWidthPx = with(density) { CheapestTooltipTailWidth.toPx() }
+    val tailHeightPx = with(density) { CheapestTooltipTailHeight.toPx() }
+    val cornerRadiusPx = with(density) { CheapestTooltipCornerRadius.toPx() }
+    return remember(tailWidthPx, tailHeightPx, cornerRadiusPx) {
+        GenericShape { size, _ ->
+            val tailHalfWidth = tailWidthPx / 2f
+            val centerX = size.width / 2f
+            val bodyTop = tailHeightPx
+            val bodyBottom = size.height
+            // Guard against a content box too small for the requested radius (e.g. very short
+            // text), which would otherwise produce overlapping/self-intersecting arcs.
+            val r = cornerRadiusPx.coerceAtMost(minOf(size.width, bodyBottom - bodyTop) / 2f)
+
+            moveTo(r, bodyTop)
+            lineTo(centerX - tailHalfWidth, bodyTop)
+            lineTo(centerX, 0f) // tail apex, pointing up at the anchor
+            lineTo(centerX + tailHalfWidth, bodyTop)
+            lineTo(size.width - r, bodyTop)
+            arcTo(
+                rect = Rect(size.width - 2 * r, bodyTop, size.width, bodyTop + 2 * r),
+                startAngleDegrees = -90f,
+                sweepAngleDegrees = 90f,
+                forceMoveTo = false,
+            ) // top-right corner
+            lineTo(size.width, bodyBottom - r)
+            arcTo(
+                rect = Rect(size.width - 2 * r, bodyBottom - 2 * r, size.width, bodyBottom),
+                startAngleDegrees = 0f,
+                sweepAngleDegrees = 90f,
+                forceMoveTo = false,
+            ) // bottom-right corner
+            lineTo(r, bodyBottom)
+            arcTo(
+                rect = Rect(0f, bodyBottom - 2 * r, 2 * r, bodyBottom),
+                startAngleDegrees = 90f,
+                sweepAngleDegrees = 90f,
+                forceMoveTo = false,
+            ) // bottom-left corner
+            lineTo(0f, bodyTop + r)
+            arcTo(
+                rect = Rect(0f, bodyTop, 2 * r, bodyTop + 2 * r),
+                startAngleDegrees = 180f,
+                sweepAngleDegrees = 90f,
+                forceMoveTo = false,
+            ) // top-left corner
+            close()
+        }
+    }
+}
+
+/**
+ * Custom tooltip content standing in for [PlainTooltip]: a [Surface] clipped to
+ * [rememberSpeechBubbleShape] instead of a plain rounded rect. Also adds its own tap-to-dismiss —
+ * [TooltipBox]'s underlying Popup (androidx.compose.ui:ui-android 1.7.5,
+ * `AndroidPopup.android.kt`'s `onTouchEvent`) only calls `onDismissRequest` for a touch *outside*
+ * the popup's bounds (or `ACTION_OUTSIDE`); a tap landing inside the bubble itself is ordinary
+ * in-bounds input and is otherwise ignored, so without this a tap directly on the tooltip
+ * wouldn't dismiss it.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CheapestTooltipBubble(state: TooltipState, text: String) {
+    Surface(
+        shape = rememberSpeechBubbleShape(),
+        color = TooltipDefaults.plainTooltipContainerColor,
+        contentColor = TooltipDefaults.plainTooltipContentColor,
+        modifier = Modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = state::dismiss,
+        ),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(
+                start = 12.dp,
+                end = 12.dp,
+                bottom = 8.dp,
+                top = CheapestTooltipTailHeight + 8.dp,
+            ),
+        )
+    }
 }
