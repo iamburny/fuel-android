@@ -62,13 +62,15 @@ Find fuel stations near you on a live map, with a searchable/filterable list.
   and restore the GPS pin set.
 - **Search / list panel** (toggled top-right via a coin icon): a fixed "Search by name, postcode,
   or brand" field (debounced, needs 2+ chars); a scrollable row of fuel-type filter chips; and the
-  station list. A one-time tooltip points at the toggle the first time it's shown, then never
-  again.
+  station list. A speech-bubble coach mark appears below the toggle button the first time it's
+  shown, pointing up at it; it stays on screen (it doesn't auto-hide) until tapped away — tapping
+  the bubble itself, tapping anywhere else on screen, or opening the panel all dismiss it — after
+  which it's never shown again.
 - **Default list is cheapest-first:** while not searching, the list shows exactly what's pinned on
   the map, sorted ascending by price for the selected fuel type — stations with no price for that
-  fuel type are omitted (with an explicit "No nearby stations currently report a price" message if
-  that empties the list). Typing 2+ characters swaps the list to server search results instead,
-  unaffected by the above.
+  fuel type are omitted (with an explicit "No nearby stations currently report a price" message,
+  plus the data attribution notice, if that empties the list). Typing 2+ characters swaps the list
+  to server search results instead, unaffected by the above.
 - **Station rows** show name, brand · distance · postcode, and a bold coloured cheapest price. Tap
   to open Detail. "Report a price discrepancy" is the last row of the list.
 - Header attribution: "Prices sourced from the UK Government Fuel Finder scheme…"

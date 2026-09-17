@@ -96,14 +96,41 @@ fun NearbyScreen(
                     // CheapestTooltipBubble below adds its own clickable-to-dismiss.
                     val tooltipState = rememberTooltipState(isPersistent = true)
                     // One-time coach-mark pointing at the toggle, shown once ever (see
-                    // NearbyUiState.showCheapestTooltip) — only ever while the panel is closed,
-                    // and marked seen only once show() returns (i.e. only after the user actually
-                    // dismisses it, since it's now persistent), so an interruption mid-first show
-                    // doesn't burn the user's only chance to see it.
+                    // NearbyUiState.showCheapestTooltip) — only ever while the panel is closed.
                     LaunchedEffect(state.showCheapestTooltip, showPanel) {
                         if (state.showCheapestTooltip && !showPanel) {
                             tooltipState.show()
-                            viewModel.markCheapestTooltipSeen()
+                        }
+                    }
+                    // Marks the coach-mark seen exactly once, on a genuine true->false transition
+                    // of tooltipState.isVisible — NOT after tooltipState.show() returns. Verified
+                    // against the real androidx.compose.material3 1.3.1 sources
+                    // (material3-android-1.3.1-sources.jar, Tooltip.kt's TooltipStateImpl /
+                    // internal/BasicTooltip.android.kt's TooltipPopup): with isPersistent = true,
+                    // show() suspends via suspendCancellableCoroutine, stashing the continuation in
+                    // a private `job`. dismiss() (called from CheapestTooltipBubble's own
+                    // clickable, or from TooltipPopup's onDismissRequest on an outside tap) only
+                    // sets `transition.targetState = false` — it never resumes or cancels that
+                    // continuation. The *only* thing that does is BasicTooltipBox's
+                    // `DisposableEffect(state) { onDispose { state.onDispose() } }`, which cancels
+                    // `job` with a CancellationException when the whole TooltipBox leaves
+                    // composition — so on an ordinary dismiss, show() simply never returns, and
+                    // code placed after it (like the old direct markCheapestTooltipSeen() call)
+                    // never runs. isVisible itself (`transition.currentState ||
+                    // transition.targetState`) IS reliably observable, though: both fields are
+                    // documented as ("Both currentState and targetState are backed by a State
+                    // object", MutableTransitionState's KDoc in animation-core 1.7.5) `by
+                    // mutableStateOf(...)`, so snapshotFlow correctly reacts once the popup has
+                    // actually finished its fade-out and left composition — for every dismiss path
+                    // (bubble tap, outside tap, or the panel opening) without wiring each one
+                    // individually.
+                    LaunchedEffect(tooltipState) {
+                        var wasVisible = false
+                        snapshotFlow { tooltipState.isVisible }.collect { visible ->
+                            if (wasVisible && !visible) {
+                                viewModel.markCheapestTooltipSeen()
+                            }
+                            wasVisible = visible
                         }
                     }
                     TooltipBox(
@@ -359,18 +386,25 @@ fun NearbyScreen(
                             val isSearching = state.searchQuery.length >= 2
                             val listStations = if (isSearching) state.stations else state.cheapestSortedStations()
                             if (!isSearching && !state.isLoading && listStations.isEmpty()) {
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .weight(1f)
-                                        .padding(32.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        "No nearby stations currently report a ${fuelLabel(state.selectedFuelType)} price.",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        textAlign = TextAlign.Center,
-                                    )
+                                Column(Modifier.fillMaxWidth().weight(1f)) {
+                                    Box(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .weight(1f)
+                                            .padding(32.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            "No nearby stations currently report a ${fuelLabel(state.selectedFuelType)} price.",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            textAlign = TextAlign.Center,
+                                        )
+                                    }
+                                    // Compliance: this empty-results branch is still a price view
+                                    // (Fair Use Policy Compliance, CLAUDE.md) — the populated
+                                    // LazyColumn below already carries this notice as its trailing
+                                    // item, this branch was missing it entirely.
+                                    DataAttributionNotice()
                                 }
                             } else {
                                 LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
