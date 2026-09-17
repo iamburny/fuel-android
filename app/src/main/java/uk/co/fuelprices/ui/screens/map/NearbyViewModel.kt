@@ -70,7 +70,26 @@ data class NearbyUiState(
     // Unlike showCheapestTooltip this isn't gated on showPanel — the pill sits on the map itself
     // and is visible regardless of the search panel's open/closed state.
     val showFuelTypePillTooltip: Boolean = false,
+    // stationId -> favouriteId (removeFavourite takes the favourite row's own id, not the station
+    // id, so this map is what makes an O(1) toggle possible). Null means "not loaded yet" — kept
+    // distinct from an empty map so a row never flashes an incorrect unfavourited state for a
+    // station that's actually already favourited before the real list has arrived.
+    val favouriteStationIds: Map<Int, Int>? = null,
+    // Stations with a favourite toggle currently in flight — guards against a rapid double-tap
+    // firing two overlapping add/remove requests for the same station.
+    val pendingFavouriteToggles: Set<Int> = emptySet(),
+    // One-shot event for the screen to react to (show a snackbar) and then clear via
+    // consumeFavouriteEvent() — not persisted state, so it doesn't re-fire on recomposition.
+    val favouriteEvent: NearbyFavouriteEvent? = null,
 )
+
+/** One-shot outcomes of [NearbyViewModel.toggleFavourite] that the screen surfaces as a snackbar.
+ *  Deliberately not a silent no-op on [SignInRequired] — unlike the Detail screen's existing
+ *  favourite heart, this list's hearts prompt sign-in instead of failing invisibly. */
+sealed interface NearbyFavouriteEvent {
+    data object SignInRequired : NearbyFavouriteEvent
+    data class ActionFailed(val message: String) : NearbyFavouriteEvent
+}
 
 /** Client-side derived view of whatever's currently pinned on the map (viewportStations after a
  *  drag, else the GPS-anchored `stations`), sorted ascending by price for `selectedFuelType` and
@@ -329,6 +348,81 @@ class NearbyViewModel @Inject constructor(
         viewModelScope.launch {
             preferencesStore.markFuelTypePillTooltipSeen()
         }
+    }
+
+    /** Loads (or reloads) the favourite lookup map — called from NearbyScreen on every appearance
+     *  (initial load, and again after popping back from Detail where a station could have been
+     *  favourited/unfavourited there) since this ViewModel has no other signal that Detail's own
+     *  favourite state may have changed underneath it. */
+    fun refreshFavourites() {
+        viewModelScope.launch {
+            try {
+                if (repo.isLoggedIn()) {
+                    val favourites = repo.getFavourites()
+                    _state.value = _state.value.copy(
+                        favouriteStationIds = favourites.associate { it.stationId to it.id },
+                    )
+                } else {
+                    _state.value = _state.value.copy(favouriteStationIds = emptyMap())
+                }
+            } catch (_: Exception) {
+                // Leave whatever was there before (possibly still null) — a transient failure here
+                // shouldn't wipe a previously loaded map; affected hearts just stay disabled/unknown
+                // until a later refresh succeeds.
+            }
+        }
+    }
+
+    /** Adds/removes [station] from favourites, mirroring DetailViewModel.toggleFavourite's
+     *  add/remove semantics, but — per this list's own design — checking sign-in proactively via
+     *  [FuelRepository.isLoggedIn] rather than silently swallowing a 401, and surfacing any other
+     *  failure instead of no-op'ing. */
+    fun toggleFavourite(station: StationDto) {
+        // Guarded synchronously (before the coroutine is even launched) so a second rapid tap —
+        // handled on the same main-thread dispatch as the first — sees this station already
+        // pending and returns immediately, rather than firing a second overlapping request.
+        if (station.id in _state.value.pendingFavouriteToggles) return
+        _state.value = _state.value.copy(
+            pendingFavouriteToggles = _state.value.pendingFavouriteToggles + station.id,
+        )
+        viewModelScope.launch {
+            try {
+                if (!repo.isLoggedIn()) {
+                    _state.value = _state.value.copy(favouriteEvent = NearbyFavouriteEvent.SignInRequired)
+                    return@launch
+                }
+                val currentMap = _state.value.favouriteStationIds ?: emptyMap()
+                val existingFavouriteId = currentMap[station.id]
+                if (existingFavouriteId != null) {
+                    repo.removeFavourite(existingFavouriteId)
+                    analytics.trackEvent("remove_from_favourites", mapOf("station_id" to station.id))
+                    _state.value = _state.value.copy(
+                        favouriteStationIds = currentMap - station.id,
+                    )
+                } else {
+                    val fav = repo.addFavourite(station.id)
+                    analytics.trackEvent("add_to_favourites", mapOf("station_id" to station.id))
+                    _state.value = _state.value.copy(
+                        favouriteStationIds = currentMap + (station.id to fav.id),
+                    )
+                }
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    favouriteEvent = NearbyFavouriteEvent.ActionFailed(
+                        e.message ?: "Couldn't update favourite. Please try again.",
+                    ),
+                )
+            } finally {
+                _state.value = _state.value.copy(
+                    pendingFavouriteToggles = _state.value.pendingFavouriteToggles - station.id,
+                )
+            }
+        }
+    }
+
+    /** Clears the one-shot favourite event once the screen has shown its snackbar for it. */
+    fun consumeFavouriteEvent() {
+        _state.value = _state.value.copy(favouriteEvent = null)
     }
 
     private fun reload(forceRefresh: Boolean = false) {

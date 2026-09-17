@@ -12,6 +12,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.MyLocation
@@ -45,11 +47,13 @@ import uk.co.fuelprices.ui.components.FuelMapView
 import uk.co.fuelprices.ui.components.MapMarker
 import uk.co.fuelprices.ui.theme.fuelColor
 import uk.co.fuelprices.ui.theme.fuelLabel
+import uk.co.fuelprices.util.approximateDistanceMiles
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NearbyScreen(
     onStationClick: (Int) -> Unit,
+    onSignIn: () -> Unit,
     viewModel: NearbyViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -58,8 +62,35 @@ fun NearbyScreen(
     // that don't cleanly map to a simple open/closed toggle button. This panel is fully
     // deterministic — only the top bar button controls it, no drag-to-ambiguous-state.
     var showPanel by rememberSaveable { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Re-fires on every reappearance (not just first composition ever) since NavHost disposes and
+    // recomposes this screen's content across a Detail push/pop even though the Hilt-scoped
+    // NearbyViewModel survives — a station favourited/unfavourited from Detail needs to be
+    // reflected here on return.
+    LaunchedEffect(Unit) { viewModel.refreshFavourites() }
+
+    LaunchedEffect(state.favouriteEvent) {
+        when (val event = state.favouriteEvent) {
+            is NearbyFavouriteEvent.SignInRequired -> {
+                val result = snackbarHostState.showSnackbar(
+                    message = "Sign in to save favourites",
+                    actionLabel = "Sign in",
+                    duration = SnackbarDuration.Short,
+                )
+                if (result == SnackbarResult.ActionPerformed) onSignIn()
+                viewModel.consumeFavouriteEvent()
+            }
+            is NearbyFavouriteEvent.ActionFailed -> {
+                snackbarHostState.showSnackbar(event.message, duration = SnackbarDuration.Short)
+                viewModel.consumeFavouriteEvent()
+            }
+            null -> {}
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         // No bottomBar here (the tab bar lives in the outer Scaffold in Navigation.kt), but
         // Scaffold reserves bottom system-bar inset space in innerPadding regardless of whether
         // a bottomBar is actually declared — stacking with the outer Scaffold's own bottom
@@ -443,10 +474,21 @@ fun NearbyScreen(
                             } else {
                                 LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                                     items(listStations, key = { it.id }) { station ->
-                                        StationRow(station, state.selectedFuelType) {
-                                            viewModel.trackStationClick(station.id, "list")
-                                            onStationClick(station.id)
-                                        }
+                                        StationRow(
+                                            station = station,
+                                            fuelType = state.selectedFuelType,
+                                            userLat = state.userLat,
+                                            userLng = state.userLng,
+                                            // null (not-yet-loaded) is preserved distinctly from
+                                            // true/false so the heart shows disabled rather than a
+                                            // possibly-wrong unfavourited state.
+                                            isFavourite = state.favouriteStationIds?.let { station.id in it },
+                                            onToggleFavourite = { viewModel.toggleFavourite(station) },
+                                            onClick = {
+                                                viewModel.trackStationClick(station.id, "list")
+                                                onStationClick(station.id)
+                                            },
+                                        )
                                     }
 
                                     item {
@@ -469,12 +511,32 @@ fun NearbyScreen(
 }
 
 @Composable
-private fun StationRow(station: StationDto, fuelType: String, onClick: () -> Unit) {
+private fun StationRow(
+    station: StationDto,
+    fuelType: String,
+    userLat: Double?,
+    userLng: Double?,
+    isFavourite: Boolean?,
+    onToggleFavourite: () -> Unit,
+    onClick: () -> Unit,
+) {
     val price = station.prices
         .filter { it.fuelType == fuelType }
         .minByOrNull { it.pricePence }
+    val distance = station.approximateDistanceMiles(userLat, userLng)
 
     ListItem(
+        // The IconButton in trailingContent below gets its own independent tap handling despite
+        // being nested inside this clickable: Compose's clickable modifier detects taps via
+        // detectTapGestures, which consumes the initial pointer-down during the Main pass — and
+        // that pass runs innermost-node-first (child before parent) up the tree. So a tap that
+        // lands within the IconButton's bounds is consumed by its own (inner) clickable before the
+        // ListItem's (outer) one ever sees an unconsumed down event, and the outer gesture detector
+        // — which by default requires an unconsumed down — never recognizes it as a click. A tap
+        // anywhere else on the row simply never hits the IconButton's hit-test bounds, so only the
+        // outer clickable sees it. No requestDisallowInterceptTouchEvent-style plumbing needed —
+        // this falls out of the pointer input pass order for free, matching FavouritesScreen's
+        // sibling (non-nested) IconButton-in-trailingContent pattern in spirit, just nested here.
         modifier = Modifier.clickable(onClick = onClick),
         leadingContent = {
             Icon(Icons.Default.LocalGasStation, contentDescription = null)
@@ -484,19 +546,29 @@ private fun StationRow(station: StationDto, fuelType: String, onClick: () -> Uni
             Text(
                 listOfNotNull(
                     station.brand,
-                    station.distanceMiles?.let { "%.1f mi".format(it) },
+                    distance?.let { (miles, isApproximate) ->
+                        (if (isApproximate) "~" else "") + "%.1f mi".format(miles)
+                    },
                     station.postcode,
                 ).joinToString(" · ")
             )
         },
         trailingContent = {
-            if (price != null) {
-                Text(
-                    "%.1fp".format(price.pricePence),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = fuelColor(fuelType),
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (price != null) {
+                    Text(
+                        "%.1fp".format(price.pricePence),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = fuelColor(fuelType),
+                    )
+                }
+                IconButton(onClick = onToggleFavourite, enabled = isFavourite != null) {
+                    Icon(
+                        if (isFavourite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = if (isFavourite == true) "Remove favourite" else "Add favourite",
+                    )
+                }
             }
         },
     )

@@ -22,6 +22,23 @@ fun haversineMiles(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Doub
     return EARTH_RADIUS_MILES * c
 }
 
+/**
+ * The distance (miles) to display for [this] station, paired with whether it's a client-side
+ * approximation. Prefers the server's own [StationDto.distanceMiles] (a real per-request SQL
+ * computation against the query origin, paired with `false`) when present. Falls back to a
+ * client-side [haversineMiles] calculation against the user's current [userLat]/[userLng] (paired
+ * with `true`) when both are available — needed because `distanceMiles` is only ever populated by
+ * the nearby-search endpoint, and is `null` for stations from a map-viewport drag or a text
+ * search. Returns null (omit entirely, no placeholder) when neither is available.
+ */
+fun StationDto.approximateDistanceMiles(userLat: Double?, userLng: Double?): Pair<Double, Boolean>? {
+    distanceMiles?.let { return it to false }
+    if (userLat != null && userLng != null) {
+        return haversineMiles(userLat, userLng, latitude, longitude) to true
+    }
+    return null
+}
+
 /** Estimated one-way fuel cost (£) to drive [distanceMiles] at [mpg], using [pricePence] (pence
  * per litre) as the cost basis. */
 fun estimateDriveCostPounds(distanceMiles: Double, mpg: Double, pricePence: Double): Double {
