@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import uk.co.fuelprices.data.api.StationDto
@@ -359,11 +360,14 @@ class NearbyViewModel @Inject constructor(
             try {
                 if (repo.isLoggedIn()) {
                     val favourites = repo.getFavourites()
-                    _state.value = _state.value.copy(
-                        favouriteStationIds = favourites.associate { it.stationId to it.id },
-                    )
+                    // Applied via update {} rather than a plain _state.value = _state.value.copy(...)
+                    // computed from a pre-suspend snapshot: repo.getFavourites() above is a suspension
+                    // point, so by the time it returns, _state.value may have moved on (e.g. a
+                    // concurrent toggleFavourite() write) — update {} re-reads the live state at write
+                    // time instead of clobbering it with whatever else changed while this suspended.
+                    _state.update { it.copy(favouriteStationIds = favourites.associate { fav -> fav.stationId to fav.id }) }
                 } else {
-                    _state.value = _state.value.copy(favouriteStationIds = emptyMap())
+                    _state.update { it.copy(favouriteStationIds = emptyMap()) }
                 }
             } catch (_: Exception) {
                 // Leave whatever was there before (possibly still null) — a transient failure here
@@ -391,31 +395,31 @@ class NearbyViewModel @Inject constructor(
                     _state.value = _state.value.copy(favouriteEvent = NearbyFavouriteEvent.SignInRequired)
                     return@launch
                 }
-                val currentMap = _state.value.favouriteStationIds ?: emptyMap()
-                val existingFavouriteId = currentMap[station.id]
+                // Only used to decide which branch to take (add vs remove) before the suspending
+                // network call below — the actual state write in each branch goes through
+                // update {} against the live map at write time, not this pre-suspend snapshot, so a
+                // second toggle (a different station, or a concurrent refreshFavourites()) landing
+                // while this one is in flight can't silently revert it.
+                val existingFavouriteId = _state.value.favouriteStationIds?.get(station.id)
                 if (existingFavouriteId != null) {
                     repo.removeFavourite(existingFavouriteId)
                     analytics.trackEvent("remove_from_favourites", mapOf("station_id" to station.id))
-                    _state.value = _state.value.copy(
-                        favouriteStationIds = currentMap - station.id,
-                    )
+                    _state.update { it.copy(favouriteStationIds = (it.favouriteStationIds ?: emptyMap()) - station.id) }
                 } else {
                     val fav = repo.addFavourite(station.id)
                     analytics.trackEvent("add_to_favourites", mapOf("station_id" to station.id))
-                    _state.value = _state.value.copy(
-                        favouriteStationIds = currentMap + (station.id to fav.id),
-                    )
+                    _state.update { it.copy(favouriteStationIds = (it.favouriteStationIds ?: emptyMap()) + (station.id to fav.id)) }
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    favouriteEvent = NearbyFavouriteEvent.ActionFailed(
-                        e.message ?: "Couldn't update favourite. Please try again.",
-                    ),
-                )
+                _state.update {
+                    it.copy(
+                        favouriteEvent = NearbyFavouriteEvent.ActionFailed(
+                            e.message ?: "Couldn't update favourite. Please try again.",
+                        ),
+                    )
+                }
             } finally {
-                _state.value = _state.value.copy(
-                    pendingFavouriteToggles = _state.value.pendingFavouriteToggles - station.id,
-                )
+                _state.update { it.copy(pendingFavouriteToggles = it.pendingFavouriteToggles - station.id) }
             }
         }
     }
