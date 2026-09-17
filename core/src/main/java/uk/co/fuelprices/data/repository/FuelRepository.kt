@@ -128,12 +128,6 @@ class FuelRepository @Inject constructor(
 
     // ── Prices ───────────────────────────────────────────
 
-    suspend fun getCheapest(
-        fuelType: String = "E10",
-        lat: Double? = null, lng: Double? = null,
-        radiusMiles: Double = 10.0,
-    ): CheapestResponse = api.getCheapest(fuelType, lat, lng, radiusMiles)
-
     suspend fun getNationalAverages(): AveragesResponse = api.getNationalAverages()
 
     suspend fun getHeatmap(fuelType: String = "E10"): HeatmapResponse = api.getHeatmap(fuelType)

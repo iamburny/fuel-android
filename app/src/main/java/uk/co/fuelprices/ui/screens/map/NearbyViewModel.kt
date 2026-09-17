@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import uk.co.fuelprices.data.api.PriceDto
 import uk.co.fuelprices.data.api.StationDto
 import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferencesStore
@@ -23,14 +22,11 @@ import uk.co.fuelprices.util.LocationHelper
 import uk.co.fuelprices.util.haversineMiles
 import javax.inject.Inject
 
-enum class ListMode { NEARBY, CHEAPEST }
-
 data class NearbyUiState(
     val isLoading: Boolean = true,
     val stations: List<StationDto> = emptyList(),
     val selectedFuelType: String = "E10",
     val radiusMiles: Double = 10.0,
-    val mode: ListMode = ListMode.NEARBY,
     val searchQuery: String = "",
     val userLat: Double? = null,
     val userLng: Double? = null,
@@ -38,7 +34,6 @@ data class NearbyUiState(
     // granted throws a SecurityException and crashes the app, so this must reflect the real
     // permission state rather than being assumed true.
     val hasLocationPermission: Boolean = false,
-    val discrepancyReportUrl: String = "",
     val error: String? = null,
     // Stations for whatever map area the user last dragged to — null until the first drag, at
     // which point map pins switch to this instead of the GPS-anchored `stations`. The bottom
@@ -64,7 +59,26 @@ data class NearbyUiState(
     val cameraLat: Double? = null,
     val cameraLng: Double? = null,
     val cameraZoom: Float = 12f,
+    // True while the Cheapest sheet is presented over the map. Lives here (ViewModel-scoped
+    // StateFlow) rather than as local Composable state so it survives rotation for free, same as
+    // cameraLat/cameraLng.
+    val isCheapestSheetVisible: Boolean = false,
 )
+
+/** Client-side derived view of whatever's currently pinned on the map (viewportStations after a
+ *  drag, else the GPS-anchored `stations`), sorted ascending by price for `selectedFuelType` and
+ *  filtered to stations that report one. No network call — this is a pure function over state
+ *  already held, so it can't drift from what's actually pinned on the map, and re-evaluates live
+ *  (fuel-type change / a drag while the sheet is open) since it's called fresh on every
+ *  recomposition rather than cached. */
+fun NearbyUiState.cheapestSortedStations(): List<StationDto> =
+    (viewportStations ?: stations)
+        .mapNotNull { station ->
+            station.prices.filter { it.fuelType == selectedFuelType }.minByOrNull { it.pricePence }
+                ?.let { station to it.pricePence }
+        }
+        .sortedBy { it.second }
+        .map { it.first }
 
 @HiltViewModel
 class NearbyViewModel @Inject constructor(
@@ -233,24 +247,14 @@ class NearbyViewModel @Inject constructor(
 
     fun setFuelType(type: String) {
         analytics.trackEvent("select_fuel_type", mapOf("fuel_type" to type))
+        // Every fuel type's prices are already cached/loaded — this is a pure property set, no
+        // async work needed. The Cheapest sheet (if open) re-sorts for free since
+        // cheapestSortedStations() is derived from selectedFuelType.
         _state.value = _state.value.copy(selectedFuelType = type)
-        // Nearby mode already has every fuel type's prices cached/loaded — just re-filter for
-        // display. Cheapest mode ranks server-side per fuel type, so that genuinely needs a
-        // fresh request.
-        if (_state.value.mode == ListMode.CHEAPEST) {
-            reload()
-        }
     }
 
     fun setRadius(miles: Double) {
         _state.value = _state.value.copy(radiusMiles = miles)
-        reload()
-    }
-
-    fun setMode(mode: ListMode) {
-        analytics.trackEvent("select_mode", mapOf("mode" to mode.name.lowercase()))
-        _state.value = _state.value.copy(mode = mode, searchQuery = "")
-        searchJob?.cancel()
         reload()
     }
 
@@ -287,51 +291,36 @@ class NearbyViewModel @Inject constructor(
         )
     }
 
-    fun loadCheapest() {
-        viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
-            try {
-                val s = _state.value
-                val response = repo.getCheapest(s.selectedFuelType, s.userLat, s.userLng, s.radiusMiles)
-                // /api/prices/cheapest's station objects carry no `prices` array — only a
-                // top-level price_pence for the one matched fuel type — so StationRow/the map
-                // markers' `station.prices.filter(...)` found nothing and rendered no price at
-                // all. Synthesize the single-entry list they expect (mirrors fuel-web's page.tsx
-                // fix for the same endpoint shape). Also sorted client-side by price ascending —
-                // not just relying on the backend's order — so "Cheapest" always reads
-                // cheapest-first.
-                _state.value = s.copy(
-                    isLoading = false,
-                    stations = response.results
-                        .sortedBy { it.pricePence }
-                        .map { entry ->
-                            entry.station.copy(
-                                distanceMiles = entry.distanceMiles,
-                                prices = listOf(
-                                    PriceDto(
-                                        fuelType = s.selectedFuelType,
-                                        pricePence = entry.pricePence,
-                                        reportedAt = "",
-                                    )
-                                ),
-                            )
-                        },
-                    discrepancyReportUrl = response.discrepancyReportUrl,
-                )
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = e.message)
-            }
-        }
+    fun showCheapestSheet() {
+        analytics.trackEvent("view_cheapest_sheet", mapOf("fuel_type" to _state.value.selectedFuelType))
+        _state.value = _state.value.copy(isCheapestSheetVisible = true)
+    }
+
+    fun dismissCheapestSheet() {
+        _state.value = _state.value.copy(isCheapestSheetVisible = false)
+    }
+
+    /** Called when a row in the Cheapest sheet is tapped: dismisses the sheet and pans/zooms the
+     *  map camera onto that station's pin (does not navigate to Detail). */
+    fun selectStationFromCheapestSheet(station: StationDto) {
+        _state.value = _state.value.copy(
+            isCheapestSheetVisible = false,
+            isOffGpsCenter = true,
+            cameraLat = station.latitude,
+            cameraLng = station.longitude,
+            cameraZoom = 15f,
+            cameraRecenterToken = _state.value.cameraRecenterToken + 1,
+        )
+        trackStationClick(station.id, "cheapest_sheet")
     }
 
     private fun reload(forceRefresh: Boolean = false) {
         val s = _state.value
         if (s.searchQuery.length >= 2) {
-            // Search and cheapest hit no local cache, so forceRefresh is a no-op for them.
+            // Search hits no local cache, so forceRefresh is a no-op for it.
             setSearchQuery(s.searchQuery)
-        } else when (s.mode) {
-            ListMode.NEARBY -> loadNearby(forceRefresh)
-            ListMode.CHEAPEST -> loadCheapest()
+        } else {
+            loadNearby(forceRefresh)
         }
     }
 }

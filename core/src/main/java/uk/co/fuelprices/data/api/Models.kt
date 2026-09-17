@@ -155,20 +155,6 @@ data class StationListResponse(
 )
 
 @Serializable
-data class CheapestResponse(
-    val results: List<CheapestEntry>,
-    @SerialName("discrepancy_report_url") val discrepancyReportUrl: String,
-    @SerialName("data_notice") val dataNotice: String,
-)
-
-@Serializable
-data class CheapestEntry(
-    val station: StationDto,
-    @SerialName("price_pence") val pricePence: Double,
-    @SerialName("distance_miles") val distanceMiles: Double? = null,
-)
-
-@Serializable
 data class AveragesResponse(
     val averages: List<NationalAverageDto>,
     @SerialName("discrepancy_report_url") val discrepancyReportUrl: String,

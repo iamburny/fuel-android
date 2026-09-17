@@ -264,23 +264,21 @@ fun NearbyScreen(
                             singleLine = true,
                         )
 
-                        // Mode toggle (Nearby / Cheapest)
+                        // "Cheapest" trigger — opens a modal listing the exact same stations
+                        // currently pinned on the map, just re-sorted by price (no network call,
+                        // no swap of the map's own dataset). Kept behind the same searchQuery
+                        // guard the old mode picker used, so the two entry points stay mutually
+                        // exclusive by construction.
                         if (state.searchQuery.length < 2) {
-                            SingleChoiceSegmentedButtonRow(
+                            Row(
                                 Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 12.dp)
+                                    .padding(horizontal = 12.dp),
                             ) {
-                                SegmentedButton(
-                                    selected = state.mode == ListMode.NEARBY,
-                                    onClick = { viewModel.setMode(ListMode.NEARBY) },
-                                    shape = SegmentedButtonDefaults.itemShape(0, 2),
-                                ) { Text("Nearby") }
-                                SegmentedButton(
-                                    selected = state.mode == ListMode.CHEAPEST,
-                                    onClick = { viewModel.setMode(ListMode.CHEAPEST) },
-                                    shape = SegmentedButtonDefaults.itemShape(1, 2),
-                                ) { Text("Cheapest") }
+                                AssistChip(
+                                    onClick = { viewModel.showCheapestSheet() },
+                                    label = { Text("Cheapest") },
+                                )
                             }
 
                             Spacer(Modifier.height(4.dp))
@@ -344,10 +342,20 @@ fun NearbyScreen(
         }
         }
     }
+
+    if (state.isCheapestSheetVisible) {
+        CheapestSheet(
+            stations = state.cheapestSortedStations(),
+            fuelType = state.selectedFuelType,
+            isLoading = state.isLoading,
+            onDismiss = viewModel::dismissCheapestSheet,
+            onStationSelected = viewModel::selectStationFromCheapestSheet,
+        )
+    }
 }
 
 @Composable
-private fun StationRow(station: StationDto, fuelType: String, onClick: () -> Unit) {
+internal fun StationRow(station: StationDto, fuelType: String, onClick: () -> Unit) {
     val price = station.prices
         .filter { it.fuelType == fuelType }
         .minByOrNull { it.pricePence }
