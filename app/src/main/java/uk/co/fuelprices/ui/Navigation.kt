@@ -198,7 +198,8 @@ fun FuelApp(
                     NearbyScreen(
                         onStationClick = { id ->
                             navController.navigate(Screen.Detail.createRoute(id))
-                        }
+                        },
+                        onSignIn = { navController.navigate(Screen.Auth.route) },
                     )
                 }
 
