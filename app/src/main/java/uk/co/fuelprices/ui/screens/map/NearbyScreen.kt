@@ -164,15 +164,17 @@ fun NearbyScreen(
                             wasVisible = visible
                         }
                     }
+                    val tooltipTail = remember { SpeechBubbleTailState() }
                     TooltipBox(
                         // Custom below-anchor placement — Material3 only ships an
                         // above-anchor-with-below-fallback provider
                         // (TooltipDefaults.rememberPlainTooltipPositionProvider()).
-                        positionProvider = rememberBelowAnchorTooltipPositionProvider(),
+                        positionProvider = rememberBelowAnchorTooltipPositionProvider(tooltipTail),
                         tooltip = {
                             SpeechBubbleTooltip(
                                 state = tooltipState,
                                 text = "See the cheapest fuel prices near you",
+                                tail = tooltipTail,
                             )
                         },
                         state = tooltipState,
@@ -283,35 +285,44 @@ fun NearbyScreen(
                     wasVisible = visible
                 }
             }
-            TooltipBox(
-                positionProvider = rememberBelowAnchorTooltipPositionProvider(),
-                tooltip = {
-                    SpeechBubbleTooltip(
-                        state = fuelPillTooltipState,
-                        text = "Tap to cycle between petrol, diesel, and other fuel types.",
-                    )
-                },
-                state = fuelPillTooltipState,
-                modifier = Modifier.align(Alignment.TopEnd),
-            ) {
-                Surface(
-                    modifier = Modifier
-                        .padding(12.dp)
-                        .clickable {
-                            val nextIndex = (FuelTypes.ALL.indexOf(state.selectedFuelType) + 1) % FuelTypes.ALL.size
-                            viewModel.setFuelType(FuelTypes.ALL[nextIndex])
-                        },
-                    shape = RoundedCornerShape(50),
-                    color = FuelTypes.color(state.selectedFuelType),
-                    shadowElevation = 4.dp,
+            // Wrapped in an aligning Box rather than passing Modifier.align to the
+            // TooltipBox: TooltipBox hands its `modifier` to the *inner* anchor wrapper
+            // (material3 1.3.1 -> BasicTooltipBox's `WrappedAnchor(modifier = modifier)`,
+            // sitting inside a bare `Box {}` of its own), so a BoxScope.align passed there
+            // resolves against that private inner Box instead of this screen's map Box and
+            // is silently dropped — leaving the pill at the map Box's default TopStart.
+            Box(Modifier.align(Alignment.TopEnd)) {
+                val fuelPillTooltipTail = remember { SpeechBubbleTailState() }
+                TooltipBox(
+                    positionProvider = rememberBelowAnchorTooltipPositionProvider(fuelPillTooltipTail),
+                    tooltip = {
+                        SpeechBubbleTooltip(
+                            state = fuelPillTooltipState,
+                            text = "Tap to cycle between petrol, diesel, and other fuel types.",
+                            tail = fuelPillTooltipTail,
+                        )
+                    },
+                    state = fuelPillTooltipState,
                 ) {
-                    Text(
-                        fuelLabel(state.selectedFuelType),
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    )
+                    Surface(
+                        modifier = Modifier
+                            .padding(12.dp)
+                            .clickable {
+                                val nextIndex = (FuelTypes.ALL.indexOf(state.selectedFuelType) + 1) % FuelTypes.ALL.size
+                                viewModel.setFuelType(FuelTypes.ALL[nextIndex])
+                            },
+                        shape = RoundedCornerShape(50),
+                        color = FuelTypes.color(state.selectedFuelType),
+                        shadowElevation = 4.dp,
+                    ) {
+                        Text(
+                            fuelLabel(state.selectedFuelType),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        )
+                    }
                 }
             }
 
@@ -587,6 +598,32 @@ private val SpeechBubbleCornerRadius = 8.dp
 private val SpeechBubbleAnchorGap = 4.dp
 
 /**
+ * One-field handoff from [rememberBelowAnchorTooltipPositionProvider] to
+ * [rememberSpeechBubbleShape]. The position provider is the only place that knows both the
+ * anchor's bounds and where the popup actually ended up after horizontal clamping, whereas the
+ * tail is drawn by the shape from inside the popup's own content — so the anchor's centre,
+ * expressed relative to the popup's left edge, has to travel between the two.
+ *
+ * Backed by snapshot state: calculatePosition runs in the layout pass, and the write there
+ * invalidates the popup content (which reads it), so the shape carrying the tail's new position
+ * is rebuilt on the NEXT recomposition rather than within the same frame. That gap isn't visible
+ * on a first show: Popup holds its content at alpha 0 until it has both a parent position and a
+ * measured content size (androidx.compose.ui:ui-android 1.7.5, AndroidPopup.android.kt's
+ * `canCalculatePosition` gate), and the same layout pass that first reports that size is the one
+ * that writes here — so both invalidations land in one recomposition, and the still-centred
+ * frame is drawn transparent. Only a re-position while the tooltip is already on screen (the
+ * anchor itself moving) would show one stale frame, which these two static coach-marks never do.
+ *
+ * Nor can it loop: a snapshot write doesn't notify read observers, so the position pass that
+ * writes here never observes its own value, and the tail's horizontal position feeds only the
+ * clip outline — never the popup's measured size, which is the sole input to what's written.
+ */
+private class SpeechBubbleTailState {
+    /** Anchor centre X in popup-content coordinates; null until the first positioning pass. */
+    var anchorCenterXPx: Float? by mutableStateOf(null)
+}
+
+/**
  * [PopupPositionProvider] that places the tooltip BELOW its anchor, horizontally centered under
  * it — unlike [TooltipDefaults.rememberPlainTooltipPositionProvider], which prefers above the
  * anchor (falling back to below only if there's no room above). Verified against the real
@@ -602,10 +639,11 @@ private val SpeechBubbleAnchorGap = 4.dp
  */
 @Composable
 private fun rememberBelowAnchorTooltipPositionProvider(
+    tail: SpeechBubbleTailState,
     gap: Dp = SpeechBubbleAnchorGap,
 ): PopupPositionProvider {
     val gapPx = with(LocalDensity.current) { gap.roundToPx() }
-    return remember(gapPx) {
+    return remember(tail, gapPx) {
         object : PopupPositionProvider {
             override fun calculatePosition(
                 anchorBounds: IntRect,
@@ -616,6 +654,12 @@ private fun rememberBelowAnchorTooltipPositionProvider(
                 val x = anchorBounds.left + (anchorBounds.width - popupContentSize.width) / 2
                 val clampedX = x.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
                 val y = anchorBounds.bottom + gapPx
+                // Whenever clampedX != x — i.e. the anchor sits too close to a screen edge for
+                // the bubble to be centred under it — the bubble's own centre is no longer the
+                // anchor's centre, so a tail drawn at the bubble's centre points at empty space.
+                // Hand the anchor's centre down in popup coordinates so the tail tracks the
+                // anchor instead. See [SpeechBubbleTailState].
+                tail.anchorCenterXPx = anchorBounds.left + anchorBounds.width / 2f - clampedX
                 return IntOffset(clampedX, y)
             }
         }
@@ -623,8 +667,10 @@ private fun rememberBelowAnchorTooltipPositionProvider(
 }
 
 /**
- * Speech-bubble [Shape]: a rounded-rectangle body with a small triangular tail centered on its
- * top edge, pointing straight up — towards the anchor button the tooltip now sits below. Built
+ * Speech-bubble [Shape]: a rounded-rectangle body with a small triangular tail on its top edge,
+ * pointing straight up at [tailCenterXPx] — the anchor's centre in the popup's own coordinates,
+ * as published by [rememberBelowAnchorTooltipPositionProvider]. Null (before the popup has been
+ * positioned) centres the tail on the bubble. Built
  * with [GenericShape] (`Path.(size: Size, layoutDirection: LayoutDirection) -> Unit`, per
  * androidx.compose.foundation:foundation-android 1.7.5 sources) by tracing the outline clockwise
  * from just right of the top-left corner: across the top edge, detouring up-and-back-down to
@@ -636,20 +682,34 @@ private fun rememberBelowAnchorTooltipPositionProvider(
  * the notch.
  */
 @Composable
-private fun rememberSpeechBubbleShape(): Shape {
+private fun rememberSpeechBubbleShape(tailCenterXPx: Float?): Shape {
     val density = LocalDensity.current
     val tailWidthPx = with(density) { SpeechBubbleTailWidth.toPx() }
     val tailHeightPx = with(density) { SpeechBubbleTailHeight.toPx() }
     val cornerRadiusPx = with(density) { SpeechBubbleCornerRadius.toPx() }
-    return remember(tailWidthPx, tailHeightPx, cornerRadiusPx) {
+    // Keyed on tailCenterXPx so a moved tail yields a NEW Shape instance: graphicsLayer caches
+    // the outline it clips against per (size, shape, layoutDirection), so mutating the tail
+    // position behind an unchanged shape instance would leave the stale outline on screen.
+    return remember(tailWidthPx, tailHeightPx, cornerRadiusPx, tailCenterXPx) {
         GenericShape { size, _ ->
             val tailHalfWidth = tailWidthPx / 2f
-            val centerX = size.width / 2f
             val bodyTop = tailHeightPx
             val bodyBottom = size.height
             // Guard against a content box too small for the requested radius (e.g. very short
             // text), which would otherwise produce overlapping/self-intersecting arcs.
             val r = cornerRadiusPx.coerceAtMost(minOf(size.width, bodyBottom - bodyTop) / 2f)
+            // Keep the tail on the flat part of the top edge, clear of both rounded corners, so
+            // it can never degenerate into a notch bitten out of a corner arc. tailMin + tailMax
+            // == size.width, so the bubble's own centre — the fallback until the popup has been
+            // positioned — is by construction already inside that range and needs no case of its
+            // own; only a bubble too narrow for two corners plus a tail (under 32dp at the
+            // current constants, so an all but empty string given the text's 24dp of horizontal
+            // padding) empties the range, and there the tail has nowhere legal to go anyway.
+            val tailMin = r + tailHalfWidth
+            val tailMax = size.width - r - tailHalfWidth
+            val desiredCenterX = tailCenterXPx ?: size.width / 2f
+            val centerX =
+                if (tailMin <= tailMax) desiredCenterX.coerceIn(tailMin, tailMax) else size.width / 2f
 
             moveTo(r, bodyTop)
             lineTo(centerX - tailHalfWidth, bodyTop)
@@ -699,9 +759,9 @@ private fun rememberSpeechBubbleShape(): Shape {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SpeechBubbleTooltip(state: TooltipState, text: String) {
+private fun SpeechBubbleTooltip(state: TooltipState, text: String, tail: SpeechBubbleTailState) {
     Surface(
-        shape = rememberSpeechBubbleShape(),
+        shape = rememberSpeechBubbleShape(tailCenterXPx = tail.anchorCenterXPx),
         color = TooltipDefaults.plainTooltipContainerColor,
         contentColor = TooltipDefaults.plainTooltipContentColor,
         modifier = Modifier.clickable(
