@@ -64,7 +64,15 @@ class DetailViewModel @Inject constructor(
             try {
                 val station = repo.getStation(stationId)
                 val preferences = preferencesStore.get()
-                val fuelType = if (station.prices.any { it.fuelType == preferences.fuelType }) {
+                // Prefer whatever fuel type was last active on a browsing screen (e.g. Nearby's
+                // pill) this session, if the station actually offers it, over the persisted
+                // "usual fuel" preference — otherwise favouriting here after navigating from a
+                // non-default filter would silently revert to "usual fuel" instead of what was
+                // actually on screen.
+                val lastActive = preferencesStore.lastActiveFuelType
+                val fuelType = if (lastActive != null && station.prices.any { it.fuelType == lastActive }) {
+                    lastActive
+                } else if (station.prices.any { it.fuelType == preferences.fuelType }) {
                     preferences.fuelType
                 } else {
                     station.prices.firstOrNull()?.fuelType ?: preferences.fuelType

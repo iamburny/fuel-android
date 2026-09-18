@@ -99,6 +99,9 @@ interface FuelPricesApi {
     @PATCH("api/favourites/{id}")
     suspend fun updateFavourite(@Path("id") favouriteId: Int, @Body body: FavouriteUpdateRequest): FavouriteDto
 
+    @PATCH("api/favourites/{id}")
+    suspend fun updateFavouriteFuelType(@Path("id") favouriteId: Int, @Body body: FavouriteFuelTypeUpdateRequest): FavouriteDto
+
     @DELETE("api/favourites/{id}")
     suspend fun removeFavourite(@Path("id") favouriteId: Int)
 

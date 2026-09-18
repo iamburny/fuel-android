@@ -14,9 +14,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import uk.co.fuelprices.data.api.AlertSubscriptionDto
+import uk.co.fuelprices.data.api.FavouriteDto
 import uk.co.fuelprices.data.api.FuelTypes
 import uk.co.fuelprices.ui.theme.fuelColor
 import uk.co.fuelprices.ui.theme.fuelLabel
@@ -49,6 +51,18 @@ fun FavouritesScreen(
                 viewModel.createAlertNearMe(radius, fuel)
             },
             onDismiss = { showCreateDialog = false },
+        )
+    }
+
+    var editingFuelTypeFor by remember { mutableStateOf<uk.co.fuelprices.data.api.FavouriteDto?>(null) }
+    editingFuelTypeFor?.let { fav ->
+        FuelTypePickerDialog(
+            currentFuelType = fav.fuelType,
+            onSelect = { newType ->
+                editingFuelTypeFor = null
+                viewModel.updateFuelType(fav, newType)
+            },
+            onDismiss = { editingFuelTypeFor = null },
         )
     }
 
@@ -139,7 +153,18 @@ fun FavouritesScreen(
                                             fontWeight = FontWeight.Medium,
                                         )
                                     },
-                                    supportingContent = { Text(fuelLabel(fav.fuelType)) },
+                                    supportingContent = {
+                                        // A real clickable Text nested inside the row's own
+                                        // Modifier.clickable — Compose (unlike SwiftUI) correctly
+                                        // routes a tap to the most specific consuming node, so this
+                                        // is safe alongside the row's own navigate-to-Detail click
+                                        // and the bell IconButton already nested the same way.
+                                        Text(
+                                            fuelLabel(fav.fuelType),
+                                            textDecoration = TextDecoration.Underline,
+                                            modifier = Modifier.clickable { editingFuelTypeFor = fav },
+                                        )
+                                    },
                                     leadingContent = {
                                         Icon(
                                             Icons.Default.Favorite,
@@ -150,7 +175,7 @@ fun FavouritesScreen(
                                     trailingContent = {
                                         IconButton(
                                             onClick = { viewModel.toggleNotify(fav) },
-                                            enabled = fav.id !in state.pendingNotifyToggleIds,
+                                            enabled = fav.id !in state.pendingUpdateIds,
                                         ) {
                                             Icon(
                                                 if (fav.notifyOnDrop) Icons.Default.NotificationsActive else Icons.Default.NotificationsOff,
@@ -299,6 +324,36 @@ private fun CreateAlertDialog(
         confirmButton = {
             Button(onClick = { onCreate(radius.toDouble(), fuel) }) { Text("Create alert") }
         },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+/** Reuses [CreateAlertDialog]'s fuel-type chip row, just without the radius slider — lets the
+ *  user change which fuel type an existing favourite tracks. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FuelTypePickerDialog(
+    currentFuelType: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Track a different fuel type") },
+        text = {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FuelTypes.ALL.forEach { type ->
+                    FilterChip(
+                        selected = currentFuelType == type,
+                        onClick = { onSelect(type) },
+                        label = { Text(fuelLabel(type)) },
+                    )
+                }
+            }
+        },
+        confirmButton = {},
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
