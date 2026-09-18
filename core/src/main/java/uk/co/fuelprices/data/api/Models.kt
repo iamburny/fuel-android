@@ -299,6 +299,13 @@ data class FavouriteCreateRequest(
     @SerialName("price_threshold_pence") val priceThresholdPence: Double? = null,
 )
 
+/** PATCH /api/favourites/{id} body — only notify_on_drop is editable via this route; fuel_type is
+ *  set once at creation time (see [FavouriteCreateRequest]), not editable after the fact. */
+@Serializable
+data class FavouriteUpdateRequest(
+    @SerialName("notify_on_drop") val notifyOnDrop: Boolean,
+)
+
 // ── Area alerts ───────────────────────────────────────────
 
 @Serializable

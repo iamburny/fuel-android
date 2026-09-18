@@ -223,6 +223,7 @@ fun NearbyScreen(
                         snippet = cheapestPrice?.let { "%.1fp".format(it.pricePence) } ?: "No price",
                         id = station.id,
                         color = FuelTypes.color(state.selectedFuelType),
+                        isFavourite = state.favouriteStationIds?.get(station.id) != null,
                     )
                 }
             } else emptyList()

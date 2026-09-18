@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import uk.co.fuelprices.data.api.AlertSubscriptionDto
 import uk.co.fuelprices.data.api.FavouriteDto
@@ -22,6 +23,10 @@ data class FavouritesUiState(
     val creatingAlert: Boolean = false,
     val error: String? = null,
     val message: String? = null,
+    // Favourite ids with a toggleNotify PATCH currently in flight — guards against a rapid
+    // double-tap on a row's bell firing two overlapping requests, matching
+    // NearbyViewModel.pendingFavouriteToggles's pattern.
+    val pendingNotifyToggleIds: Set<Int> = emptySet(),
 )
 
 @HiltViewModel
@@ -110,6 +115,34 @@ class FavouritesViewModel @Inject constructor(
                     alerts = _state.value.alerts.filter { it.id != id }
                 )
             } catch (_: Exception) {
+            }
+        }
+    }
+
+    fun toggleNotify(favourite: FavouriteDto) {
+        if (favourite.id in _state.value.pendingNotifyToggleIds) return
+        _state.value = _state.value.copy(
+            pendingNotifyToggleIds = _state.value.pendingNotifyToggleIds + favourite.id,
+        )
+        viewModelScope.launch {
+            val newValue = !favourite.notifyOnDrop
+            try {
+                val updated = repo.updateFavourite(favourite.id, newValue)
+                analytics.trackEvent(
+                    if (newValue) "favourite_notify_enabled" else "favourite_notify_disabled",
+                    mapOf("station_id" to favourite.stationId),
+                )
+                _state.value = _state.value.copy(
+                    favourites = _state.value.favourites.map {
+                        // The PATCH response omits `station` (a fresh favourite already has no
+                        // need for it beyond the id/station_id already known locally, same as
+                        // POST's response) — keep the one already loaded from GET.
+                        if (it.id == favourite.id) updated.copy(station = it.station) else it
+                    },
+                )
+            } catch (_: Exception) {
+            } finally {
+                _state.update { it.copy(pendingNotifyToggleIds = it.pendingNotifyToggleIds - favourite.id) }
             }
         }
     }

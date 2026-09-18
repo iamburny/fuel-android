@@ -206,6 +206,9 @@ class FuelRepository @Inject constructor(
     suspend fun addFavourite(stationId: Int, fuelType: String = "E10") =
         api.addFavourite(FavouriteCreateRequest(stationId, fuelType))
 
+    suspend fun updateFavourite(id: Int, notifyOnDrop: Boolean) =
+        api.updateFavourite(id, FavouriteUpdateRequest(notifyOnDrop))
+
     suspend fun removeFavourite(id: Int) = api.removeFavourite(id)
 
     // ── Area alerts ───────────────────────────────────────
