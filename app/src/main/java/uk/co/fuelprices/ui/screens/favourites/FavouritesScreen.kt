@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -159,10 +160,19 @@ fun FavouritesScreen(
                                         // routes a tap to the most specific consuming node, so this
                                         // is safe alongside the row's own navigate-to-Detail click
                                         // and the bell IconButton already nested the same way.
+                                        val isPending = fav.id in state.pendingUpdateIds
                                         Text(
                                             fuelLabel(fav.fuelType),
                                             textDecoration = TextDecoration.Underline,
-                                            modifier = Modifier.clickable { editingFuelTypeFor = fav },
+                                            color = if (isPending) MaterialTheme.colorScheme.outline else Color.Unspecified,
+                                            // Gated the same way as the bell IconButton below —
+                                            // without this, reopening the picker while a previous
+                                            // fuel-type/notify PATCH for this row is still in
+                                            // flight would silently no-op in the ViewModel (its own
+                                            // pendingUpdateIds guard) with zero feedback, since a
+                                            // plain Modifier.clickable has no built-in disabled
+                                            // state the way IconButton's `enabled` does.
+                                            modifier = Modifier.clickable(enabled = !isPending) { editingFuelTypeFor = fav },
                                         )
                                     },
                                     leadingContent = {
