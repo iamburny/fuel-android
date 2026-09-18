@@ -41,8 +41,12 @@ field shouldn't crash deserialization — see the kotlinx.serialization keep-rul
 ./gradlew :app:assembleDebug
 ./gradlew :automotive:assembleDebug
 
-# Build release APKs (see "Release / prod builds" below)
-./gradlew assembleRelease
+# Build the Play Store artifact (see "Release / prod builds" below)
+./gradlew :app:bundleRelease
+# Signed AAB lands at app/build/outputs/bundle/release/app-release.aab
+
+# Build a release APK instead — for sideload testing, not accepted by Play
+./gradlew :app:assembleRelease
 # Signed release phone APK lands at app/build/outputs/apk/release/app-release.apk
 
 # Run all unit tests
@@ -80,17 +84,24 @@ field shouldn't crash deserialization — see the kotlinx.serialization keep-rul
 
 ## Key Configuration
 
-- **API base URL**: Set per build type in `core/build.gradle.kts` (`API_BASE_URL` BuildConfig field, consumed by `:core`'s `AppModule`). Debug = `http://10.0.2.2:8000` (emulator → host localhost); release = `https://api.fueltracker.uk` (the deployed prod backend, see the `fuel-api` repo).
-- **Maps**: Phone UI uses the Google Maps SDK (`FuelMapView`) — requires `MAPS_API_KEY=...` in `local.properties` (gitignored, never commit a real key) with billing enabled on the Google Cloud project. The car experience is unaffected — it uses the host-rendered map in `PlaceListMapTemplate`, no key needed there.
+- **API base URL**: Set once in `core/build.gradle.kts`'s `defaultConfig` (`API_BASE_URL` BuildConfig field, consumed by `:core`'s `AppModule`) to `https://api.fueltracker.uk` — the deployed prod backend, see the `fuel-api` repo. There are no per-build-type overrides: **debug builds hit prod too**, so they work on physical hardware. To run against a local `fuel-api`, edit that field by hand to `http://10.0.2.2:8000` (emulator → host localhost) or your LAN IP.
+- **Maps**: Phone UI uses the Google Maps SDK (`FuelMapView`) — requires `MAPS_API_KEY=...` in `local.properties` (gitignored, never commit a real key) with billing enabled on the Google Cloud project. Release builds use `MAPS_API_KEY_RELEASE` instead, falling back to `MAPS_API_KEY` when unset — see "Release / prod builds". `local.properties` also carries `GOOGLE_WEB_CLIENT_ID` (Credential Manager sign-in) and `UNLEASH_CLIENT_KEY` (feature flags). The car experience is unaffected — it uses the host-rendered map in `PlaceListMapTemplate`, no key needed there.
 - **Firebase**: Requires `google-services.json` in `app/` for push notifications.
-- **SDK targets**: compileSdk 35, targetSdk 35, JVM target 17. `:app` and `:core` use minSdk 29; `:automotive` requires minSdk 29 too (`androidx.car.app:app-automotive`'s floor). minSdk was raised from 26 to 29 app-wide to support this.
+- **SDK targets**: compileSdk 36, targetSdk 36, JVM target 17. `:app` and `:automotive` use minSdk 29 — `androidx.car.app:app-automotive`'s floor. `:core` stays at minSdk 26, since the shared data/DI code carries no such constraint.
 - **Testing the car experience**: `:app` (with `:core`) is tested via the **Desktop Head Unit (DHU)** against a physical Android-Auto phone that has the app installed — **not** on a real car head unit. This is a hard platform rule: Car App Library *template* apps **cannot be sideloaded onto a real head unit**; Android Auto's "Unknown sources" developer setting explicitly does not apply to template apps (only to media/messaging/parked apps). An unpublished template app appears on a physical car only after Play Store distribution + Android Auto app-quality review. DHU setup: phone Android Auto → Developer settings → "Start head unit server"; then `adb forward tcp:5277 tcp:5277` and run `<SDK>/extras/google/auto/desktop-head-unit(.exe)`. `:automotive` (Automotive OS) is different — it deploys straight to the Android Automotive OS emulator (Tools → AVD Manager → Automotive hardware profile), no phone or DHU needed; set the Run config's Launch Option to "Nothing" since the OS launches the app via `CarAppActivity`.
 
 ## Release / prod builds
 
-`./gradlew :app:assembleRelease` produces a signed, installable APK at `app/build/outputs/apk/release/app-release.apk` (points at the prod backend, R8-minified).
+`./gradlew :app:bundleRelease` produces the Play Store artifact — a signed AAB at `app/build/outputs/bundle/release/app-release.aab`. `./gradlew :app:assembleRelease` produces a signed APK at `app/build/outputs/apk/release/app-release.apk` for sideload testing; Play does not accept it. Both point at the prod backend and are R8-minified.
 
-- **Signing**: the release build type is signed with the **debug keystore** (`signingConfig = signingConfigs.getByName("debug")` in `app/build.gradle.kts`). This is deliberate for sideload testing on a real phone — the debug cert's SHA-1 matches the one the `MAPS_API_KEY` is registered against, so the map still renders. **This must be swapped for a real upload/release keystore before any Play Store distribution.**
+- **Signing**: the release build type is signed with the upload keystore described by `keystore.properties` (gitignored — see `keystore.properties.example`; the key lives in `upload-keystore.jks`, alias `upload`, `CN=Fuel Tracker UK`). When that file is absent — a fresh clone, or CI without secrets — the build silently falls back to the debug keystore so it still compiles. **That fallback is not valid for Play**; check the signer before uploading:
+  ```bash
+  keytool -printcert -jarfile app/build/outputs/bundle/release/app-release.aab
+  # Expect Owner: CN=Fuel Tracker UK, not CN=Android Debug
+  ```
+- **Version codes**: Play rejects a versionCode it has already seen. Bump `versionCode` in `app/build.gradle.kts` for every upload, and keep `versionName` aligned with the iOS marketing version.
+- **Maps key**: release builds use `MAPS_API_KEY_RELEASE` from `local.properties` (falling back to `MAPS_API_KEY` when unset). Restrict that key in Cloud Console against the **Play app-signing** SHA-1 and the `uk.fueltracker.app` applicationId — Play re-signs the AAB, so the upload cert's SHA-1 is not what the installed app presents, and a key restricted to it leaves the map blank in production. Note the consequence for sideload testing: a locally built release APK carries the **upload** cert, not the Play one, so add the upload SHA-1 (`keytool -list -v -keystore upload-keystore.jks`) to the same key's restrictions if you want the map to render in a sideloaded release build.
+- **Build memory**: the release build needs the `MaxMetaspaceSize=1g` set in `gradle.properties`. At the 512m this project used previously it fails at `:app:hiltJavaCompileRelease` with a bare `Metaspace` error. The heap (`-Xmx2048m`) is unrelated and sufficient as-is.
 - **R8 / ProGuard**: minification is on for release. `app/proguard-rules.pro` holds the kotlinx.serialization keep rules (without them the generated `$serializer` classes are stripped and every API response fails to deserialize at runtime — the APK installs but crashes), plus defensive rules for the API DTOs, the Retrofit interface, and the `car/` entry points. Always smoke-test a release build against a live backend after touching serialization or DI.
 - **Sideloading**: `adb install app-release.apk` installs the **phone** app fine for testing the phone UI directly. It does **not** make the app appear on a real Android Auto car head unit — Car App Library template apps can't be sideloaded there (see "Testing the car experience" above); use the DHU, or publish to Play. Enabling Android Auto Developer settings + "Unknown sources" is still required for the DHU to load the unpublished build, just not sufficient for a physical head unit.
 

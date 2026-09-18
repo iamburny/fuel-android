@@ -16,19 +16,31 @@ Native Kotlin Android app for viewing UK fuel prices from the Government Fuel Fi
 ## Setup
 
 1. Open in Android Studio (Ladybug or newer)
-2. Backend URL is set per build type in `core/build.gradle.kts` (`API_BASE_URL`): debug → `http://10.0.2.2:8000` (emulator → host localhost), release → `https://api.fueltracker.uk` (deployed prod backend)
+2. Backend URL is set once in `core/build.gradle.kts` (`API_BASE_URL`) to `https://api.fueltracker.uk`, the deployed prod backend — debug builds included, so they run on real hardware. Edit that field by hand to point at a local `fuel-api`.
 3. Add `MAPS_API_KEY=your-key-here` to `local.properties` (gitignored) — needs a Google Cloud project with the Maps SDK for Android enabled and billing turned on
 4. For push notifications, add `google-services.json` from Firebase Console
 5. Build and run
 
-## Building a release / prod APK
+## Building a release / prod build
 
 ```bash
+# Play Store artifact
+./gradlew :app:bundleRelease
+# → app/build/outputs/bundle/release/app-release.aab (signed, prod backend, R8-minified)
+
+# Sideloadable APK for on-device testing (Play does not accept this)
 ./gradlew :app:assembleRelease
-# → app/build/outputs/apk/release/app-release.apk (signed, prod backend, R8-minified)
+# → app/build/outputs/apk/release/app-release.apk
 ```
 
-The release build is signed with the **debug keystore** so it installs via sideload for on-device testing, and its cert SHA-1 matches the one the Maps API key is registered against. Swap in a real upload keystore in `app/build.gradle.kts` before any Play Store release.
+Both are signed with the upload keystore described by `keystore.properties` (gitignored — see `keystore.properties.example`). Without that file the build falls back to the debug keystore so it still compiles; that fallback is **not** valid for Play. Verify before uploading:
+
+```bash
+keytool -printcert -jarfile app/build/outputs/bundle/release/app-release.aab
+# Expect Owner: CN=Fuel Tracker UK, not CN=Android Debug
+```
+
+Bump `versionCode` in `app/build.gradle.kts` for every Play upload — Play rejects a versionCode it has already seen. See CLAUDE.md's "Release / prod builds" for the Maps-key and R8 caveats.
 
 Install the **phone** app on a device: `adb install app-release.apk`. This is all you need to test the phone UI.
 
