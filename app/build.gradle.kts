@@ -42,7 +42,7 @@ android {
         applicationId = "uk.fueltracker.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 10
+        versionCode = 11
         versionName = "1.4"
 
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
