@@ -145,9 +145,3 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     testImplementation("app.cash.turbine:turbine:1.2.0")
 }
-
-tasks.withType<Test> {
-    // MockK mocks final Kotlin classes (the ViewModels' collaborators) via a self-attaching Java
-    // agent — needs these on JDK 17+ for the attach API to work reliably in the Gradle test JVM.
-    jvmArgs("-XX:+EnableDynamicAgentLoading", "-Djdk.attach.allowAttachSelf=true")
-}

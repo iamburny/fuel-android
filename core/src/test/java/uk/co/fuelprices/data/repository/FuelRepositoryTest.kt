@@ -6,17 +6,14 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import uk.co.fuelprices.data.api.FuelPricesApi
-import uk.co.fuelprices.data.api.StationDto
 import uk.co.fuelprices.data.api.StationListResponse
 import uk.co.fuelprices.data.db.FuelDatabase
-import uk.co.fuelprices.data.db.FuelPriceEntity
 import uk.co.fuelprices.data.db.StationDao
-import uk.co.fuelprices.data.db.StationEntity
-import uk.co.fuelprices.data.db.StationWithPrices
+import uk.co.fuelprices.testutil.testStationDto
+import uk.co.fuelprices.testutil.testStationWithPrices
 
 class FuelRepositoryTest {
 
@@ -39,7 +36,7 @@ class FuelRepositoryTest {
     @Test
     fun `getNearbyStations returns cached stations without calling the API when the cache is fresh`() = runTest {
         coEvery { dao.getFreshStationsNear(any(), any(), any(), any(), any(), any()) } returns
-            listOf(stationWithPrices(id = 1, name = "Cached Station"))
+            listOf(testStationWithPrices(id = 1, name = "Cached Station"))
 
         val response = repo.getNearbyStations(lat = 51.5, lng = -0.1)
 
@@ -52,7 +49,7 @@ class FuelRepositoryTest {
     fun `getNearbyStations calls the API and caches the result when there is no fresh cache`() = runTest {
         coEvery { dao.getFreshStationsNear(any(), any(), any(), any(), any(), any()) } returns emptyList()
         coEvery { api.getNearbyStations(any(), any(), any(), any(), any()) } returns
-            StationListResponse(count = 1, stations = listOf(stationDto(id = 2, name = "Fresh Station")))
+            StationListResponse(count = 1, stations = listOf(testStationDto(id = 2, name = "Fresh Station")))
 
         val response = repo.getNearbyStations(lat = 51.5, lng = -0.1)
 
@@ -64,7 +61,7 @@ class FuelRepositoryTest {
     fun `getNearbyStations falls back to any cached stations when the API fails`() = runTest {
         coEvery { dao.getFreshStationsNear(any(), any(), any(), any(), any(), any()) } returns emptyList()
         coEvery { api.getNearbyStations(any(), any(), any(), any(), any()) } throws RuntimeException("network down")
-        coEvery { dao.getAllStations(any()) } returns listOf(stationWithPrices(id = 3, name = "Stale Station"))
+        coEvery { dao.getAllStations(any()) } returns listOf(testStationWithPrices(id = 3, name = "Stale Station"))
 
         val response = repo.getNearbyStations(lat = 51.5, lng = -0.1)
 
@@ -91,7 +88,7 @@ class FuelRepositoryTest {
     @Test
     fun `getStation falls back to the cached entity when the API fails`() = runTest {
         coEvery { api.getStation(4) } throws RuntimeException("network down")
-        coEvery { dao.getStationById(4) } returns stationWithPrices(id = 4, name = "Cached Detail")
+        coEvery { dao.getStationById(4) } returns testStationWithPrices(id = 4, name = "Cached Detail")
 
         val station = repo.getStation(4)
 
@@ -105,33 +102,4 @@ class FuelRepositoryTest {
 
         repo.getStation(5)
     }
-
-    private fun stationDto(id: Int, name: String) = StationDto(
-        id = id,
-        govId = "gov-$id",
-        name = name,
-        latitude = 51.5,
-        longitude = -0.1,
-    )
-
-    private fun stationWithPrices(id: Int, name: String) = StationWithPrices(
-        station = StationEntity(
-            id = id,
-            govId = "gov-$id",
-            name = name,
-            brand = null,
-            operator = null,
-            addressLine1 = null,
-            addressLine2 = null,
-            town = null,
-            county = null,
-            postcode = null,
-            phone = null,
-            latitude = 51.5,
-            longitude = -0.1,
-            amenitiesJson = null,
-            openingHoursJson = null,
-        ),
-        prices = listOf(FuelPriceEntity(stationId = id, fuelType = "E10", pricePence = 140.0, reportedAt = "2026-01-01T00:00:00Z")),
-    )
 }

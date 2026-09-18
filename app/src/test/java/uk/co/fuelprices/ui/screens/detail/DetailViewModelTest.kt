@@ -13,18 +13,21 @@ import org.junit.Rule
 import org.junit.Test
 import uk.co.fuelprices.data.api.AveragesResponse
 import uk.co.fuelprices.data.api.FavouriteDto
-import uk.co.fuelprices.data.api.PriceDto
 import uk.co.fuelprices.data.api.PriceHistoryResponse
-import uk.co.fuelprices.data.api.StationDto
 import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferences
 import uk.co.fuelprices.data.repository.UserPreferencesStore
 import uk.co.fuelprices.testutil.MainDispatcherRule
+import uk.co.fuelprices.testutil.testPriceDto
+import uk.co.fuelprices.testutil.testStationDto
 import uk.co.fuelprices.util.AppAnalytics
 import uk.co.fuelprices.util.LocationHelper
 
 /** Regression tests for the pendingFavouriteToggle re-entrancy guard (fixed in commit 90013f8) —
- *  see NearbyViewModelTest for the equivalent guard on that screen. */
+ *  see NearbyViewModelTest for the equivalent guard on that screen. Two distinct scenarios: the
+ *  first test only proves the synchronous boolean check rejects a same-tick second call (no
+ *  coroutine has run yet at that point); the second is the one that actually exercises a toggle
+ *  genuinely suspended mid-flight racing a concurrent state change. */
 class DetailViewModelTest {
 
     @get:Rule
@@ -41,7 +44,11 @@ class DetailViewModelTest {
         preferencesStore = mockk(relaxed = true)
         analytics = mockk(relaxed = true)
 
-        coEvery { repo.getStation(1) } returns station()
+        coEvery { repo.getStation(1) } returns testStationDto(
+            id = 1,
+            name = "Station",
+            prices = listOf(testPriceDto("E10", 140.0), testPriceDto("E5", 150.0)),
+        )
         coEvery { repo.getPriceHistory(1, "E10") } returns PriceHistoryResponse(1, "Station", "E10", emptyList())
         coEvery { repo.getPriceHistory(1, "E5") } returns PriceHistoryResponse(1, "Station", "E5", emptyList())
         coEvery { repo.getFavourites() } returns emptyList()
@@ -52,20 +59,8 @@ class DetailViewModelTest {
         return DetailViewModel(savedState, repo, locationHelper, preferencesStore, analytics)
     }
 
-    private fun station() = StationDto(
-        id = 1,
-        govId = "gov-1",
-        name = "Station",
-        latitude = 51.5,
-        longitude = -0.1,
-        prices = listOf(
-            PriceDto("E10", 140.0, "2026-01-01T00:00:00Z"),
-            PriceDto("E5", 150.0, "2026-01-01T00:00:00Z"),
-        ),
-    )
-
     @Test
-    fun `rapid double toggleFavourite before the dispatcher advances results in exactly one repository call`() = runTest(mainDispatcherRule.dispatcher) {
+    fun `rapid double toggleFavourite is rejected synchronously by the pending guard, resulting in exactly one repository call`() = runTest(mainDispatcherRule.dispatcher) {
         val viewModel = buildViewModel()
         coEvery { repo.addFavourite(any(), any()) } returns FavouriteDto(99, 1, "E10", true)
 
