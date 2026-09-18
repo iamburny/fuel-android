@@ -23,6 +23,10 @@ import uk.co.fuelprices.util.LocationHelper
 import uk.co.fuelprices.util.haversineMiles
 import javax.inject.Inject
 
+/** North-up (the original, only-ever behavior) vs. rotating the map so the direction the user is
+ *  currently travelling always faces up on screen, like a car navigation app's heading-up mode. */
+enum class MapOrientationMode { NORTH_UP, TRAVEL_DIRECTION_UP }
+
 data class NearbyUiState(
     val isLoading: Boolean = true,
     val stations: List<StationDto> = emptyList(),
@@ -82,6 +86,15 @@ data class NearbyUiState(
     // One-shot event for the screen to react to (show a snackbar) and then clear via
     // consumeFavouriteEvent() — not persisted state, so it doesn't re-fire on recomposition.
     val favouriteEvent: NearbyFavouriteEvent? = null,
+    // GPS course-over-ground from the most recent fix that actually reported one — only ever
+    // overwritten by a genuinely valid bearing (loc.hasBearing()), never reset to 0/garbage on an
+    // invalid reading. Keeps updating even while off-center, so it can't be stale once the user
+    // recenters or toggles orientation mode.
+    val lastKnownBearing: Float = 0f,
+    val mapOrientationMode: MapOrientationMode = MapOrientationMode.NORTH_UP,
+    // Camera-committed bearing — 0 in north-up, else lastKnownBearing in travel-direction-up.
+    // Stored (not computed) to match cameraLat/cameraLng/cameraZoom's existing pattern.
+    val mapBearing: Float = 0f,
 )
 
 /** One-shot outcomes of [NearbyViewModel.toggleFavourite] that the screen surfaces as a snackbar.
@@ -189,11 +202,21 @@ class NearbyViewModel @Inject constructor(
                 // Ignore sub-30m jitter so the camera doesn't twitch while standing still.
                 val moved = prevLat == null || prevLng == null ||
                     haversineMiles(prevLat, prevLng, loc.latitude, loc.longitude) > 0.02
-                if (!moved) return@collect
+                // Only overwrite on a genuinely valid bearing reading — an invalid one (e.g.
+                // stopped at a light) keeps whatever was last known, so travel-direction-up mode
+                // holds its last heading instead of flickering back to north. Captured
+                // unconditionally (not gated on `moved`) since a bearing update is meaningful
+                // even on a sub-30m tick, e.g. turning in place at a junction.
+                val bearing = if (loc.hasBearing()) loc.bearing else s.lastKnownBearing
                 _state.value = s.copy(
-                    userLat = loc.latitude,
-                    userLng = loc.longitude,
-                    cameraRecenterToken = if (!s.isOffGpsCenter) {
+                    userLat = if (moved) loc.latitude else s.userLat,
+                    userLng = if (moved) loc.longitude else s.userLng,
+                    lastKnownBearing = bearing,
+                    mapBearing = when (s.mapOrientationMode) {
+                        MapOrientationMode.NORTH_UP -> 0f
+                        MapOrientationMode.TRAVEL_DIRECTION_UP -> bearing
+                    },
+                    cameraRecenterToken = if (moved && !s.isOffGpsCenter) {
                         s.cameraRecenterToken + 1
                     } else {
                         s.cameraRecenterToken
@@ -266,18 +289,47 @@ class NearbyViewModel @Inject constructor(
         }
     }
 
-    /** Jumps the map back to the user's GPS location and reverts pins to the GPS-anchored set. */
+    /** Jumps the map back to the user's GPS location and reverts pins to the GPS-anchored set.
+     *  Also reapplies whatever the current orientation mode dictates — recentering position and
+     *  "recommitting" to the current rotation happen together through the same mechanism. */
     fun recenterOnGps() {
         boundsJob?.cancel()
-        _state.value = _state.value.copy(
+        val s = _state.value
+        _state.value = s.copy(
             viewportStations = null,
             isOffGpsCenter = false,
             isLoadingViewport = false,
-            cameraRecenterToken = _state.value.cameraRecenterToken + 1,
+            cameraRecenterToken = s.cameraRecenterToken + 1,
             // Clears the stashed drag position so the map falls back to userLat/userLng again.
             cameraLat = null,
             cameraLng = null,
             cameraZoom = 12f,
+            mapBearing = when (s.mapOrientationMode) {
+                MapOrientationMode.NORTH_UP -> 0f
+                MapOrientationMode.TRAVEL_DIRECTION_UP -> s.lastKnownBearing
+            },
+        )
+    }
+
+    /** Flips the map's rotation mode between north-up and travel-direction-up. Always updates the
+     *  stored mode/bearing, but only forces an immediate camera update (bumping
+     *  [NearbyUiState.cameraRecenterToken]) when the map is currently GPS-centered
+     *  ([NearbyUiState.isOffGpsCenter] is false) — if the user has dragged away, the new
+     *  orientation is picked up silently and takes effect next time they recenter. */
+    fun toggleMapOrientation() {
+        val s = _state.value
+        val newMode = when (s.mapOrientationMode) {
+            MapOrientationMode.NORTH_UP -> MapOrientationMode.TRAVEL_DIRECTION_UP
+            MapOrientationMode.TRAVEL_DIRECTION_UP -> MapOrientationMode.NORTH_UP
+        }
+        val newBearing = when (newMode) {
+            MapOrientationMode.NORTH_UP -> 0f
+            MapOrientationMode.TRAVEL_DIRECTION_UP -> s.lastKnownBearing
+        }
+        _state.value = s.copy(
+            mapOrientationMode = newMode,
+            mapBearing = newBearing,
+            cameraRecenterToken = if (!s.isOffGpsCenter) s.cameraRecenterToken + 1 else s.cameraRecenterToken,
         )
     }
 

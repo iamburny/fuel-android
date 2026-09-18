@@ -37,6 +37,16 @@ data class MapMarker(
     val color: Color? = null,
 )
 
+/** Builds a [CameraPosition] targeting (lat, lng) at the given zoom/bearing — extracted so the
+ *  two camera-construction call sites in [FuelMapView] can't drift out of sync on bearing
+ *  handling. Never tilts the map (viewingAngle stays at the Builder's default of 0). */
+private fun cameraPosition(lat: Double, lng: Double, zoom: Float, bearing: Float): CameraPosition =
+    CameraPosition.Builder()
+        .target(LatLng(lat, lng))
+        .zoom(zoom)
+        .bearing(bearing)
+        .build()
+
 /** Google Maps Compose wrapper. Requires MAPS_API_KEY set in local.properties. */
 @Composable
 fun FuelMapView(
@@ -60,9 +70,12 @@ fun FuelMapView(
     // granted (the caller's responsibility). The SDK's own recenter button is hidden — callers
     // that want one (Nearby) provide their own FAB. Left false for static maps (e.g. Detail).
     showMyLocation: Boolean = false,
+    // Camera rotation in degrees clockwise from north. Left at the default (0, north-up) for
+    // callers that don't need it (e.g. DetailScreen's static single-marker map).
+    bearing: Float = 0f,
 ) {
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(LatLng(centerLat, centerLng), zoomLevel)
+        position = cameraPosition(centerLat, centerLng, zoomLevel, bearing)
     }
 
     // isMoving starts false at initial composition (before any gesture), so a plain "fire when
@@ -81,7 +94,7 @@ fun FuelMapView(
     var suppressNextIdle by remember { mutableStateOf(false) }
     LaunchedEffect(recenterKey) {
         if (recenterKey != null && hasStartedMoving) suppressNextIdle = true
-        cameraPositionState.position = CameraPosition.fromLatLngZoom(LatLng(centerLat, centerLng), zoomLevel)
+        cameraPositionState.position = cameraPosition(centerLat, centerLng, zoomLevel, bearing)
     }
 
     LaunchedEffect(cameraPositionState.isMoving) {
