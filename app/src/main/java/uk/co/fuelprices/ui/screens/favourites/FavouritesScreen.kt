@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -147,11 +148,14 @@ fun FavouritesScreen(
                                         )
                                     },
                                     trailingContent = {
-                                        if (fav.notifyOnDrop) {
-                                            Text(
-                                                "Alerts on",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.primary,
+                                        IconButton(
+                                            onClick = { viewModel.toggleNotify(fav) },
+                                            enabled = fav.id !in state.pendingNotifyToggleIds,
+                                        ) {
+                                            Icon(
+                                                if (fav.notifyOnDrop) Icons.Default.NotificationsActive else Icons.Default.NotificationsOff,
+                                                if (fav.notifyOnDrop) "Mute price-drop alerts" else "Enable price-drop alerts",
+                                                tint = if (fav.notifyOnDrop) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                                             )
                                         }
                                     },

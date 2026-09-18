@@ -26,10 +26,17 @@ data class DetailUiState(
     val selectedFuelType: String? = null,
     val isFavourite: Boolean = false,
     val favouriteId: Int? = null,
+    val notifyOnDrop: Boolean = true,
     val nationalAverages: List<NationalAverageDto> = emptyList(),
     val distanceMiles: Double? = null,
     val driveCostPounds: Double? = null,
     val error: String? = null,
+    // Guards toggleFavourite()/toggleNotify() re-entrancy — a rapid double-tap on the heart or
+    // bell in DetailScreen calls straight into these without any UI-side debounce, so without
+    // this a second tap mid-flight could double-submit an add/remove/update call before the
+    // first's result lands. Mirrors NearbyViewModel's pendingFavouriteToggles, just scoped to
+    // this screen's single station rather than a set of many.
+    val pendingFavouriteToggle: Boolean = false,
 )
 
 @HiltViewModel
@@ -95,6 +102,7 @@ class DetailViewModel @Inject constructor(
                     selectedFuelType = fuelType,
                     isFavourite = existingFav != null,
                     favouriteId = existingFav?.id,
+                    notifyOnDrop = existingFav?.notifyOnDrop ?: true,
                     nationalAverages = averages,
                     distanceMiles = distanceMiles,
                     driveCostPounds = driveCost,
@@ -118,6 +126,8 @@ class DetailViewModel @Inject constructor(
     }
 
     fun toggleFavourite() {
+        if (_state.value.pendingFavouriteToggle) return
+        _state.value = _state.value.copy(pendingFavouriteToggle = true)
         viewModelScope.launch {
             try {
                 val current = _state.value
@@ -126,11 +136,38 @@ class DetailViewModel @Inject constructor(
                     analytics.trackEvent("remove_from_favourites", mapOf("station_id" to stationId))
                     _state.value = current.copy(isFavourite = false, favouriteId = null)
                 } else {
-                    val fav = repo.addFavourite(stationId)
+                    // Pass the active fuel-type filter rather than letting this silently
+                    // default to E10 — a diesel driver favouriting from here should get diesel
+                    // alerts.
+                    val fav = repo.addFavourite(stationId, current.selectedFuelType ?: "E10")
                     analytics.trackEvent("add_to_favourites", mapOf("station_id" to stationId))
-                    _state.value = current.copy(isFavourite = true, favouriteId = fav.id)
+                    _state.value = current.copy(isFavourite = true, favouriteId = fav.id, notifyOnDrop = true)
                 }
-            } catch (_: Exception) { }
+            } catch (_: Exception) {
+            } finally {
+                _state.value = _state.value.copy(pendingFavouriteToggle = false)
+            }
+        }
+    }
+
+    fun toggleNotify() {
+        val current = _state.value
+        val favouriteId = current.favouriteId
+        if (current.pendingFavouriteToggle || favouriteId == null) return
+        _state.value = current.copy(pendingFavouriteToggle = true)
+        val newValue = !current.notifyOnDrop
+        viewModelScope.launch {
+            try {
+                val updated = repo.updateFavourite(favouriteId, newValue)
+                analytics.trackEvent(
+                    if (newValue) "favourite_notify_enabled" else "favourite_notify_disabled",
+                    mapOf("station_id" to stationId),
+                )
+                _state.value = _state.value.copy(notifyOnDrop = updated.notifyOnDrop)
+            } catch (_: Exception) {
+            } finally {
+                _state.value = _state.value.copy(pendingFavouriteToggle = false)
+            }
         }
     }
 }

@@ -458,7 +458,10 @@ class NearbyViewModel @Inject constructor(
                     analytics.trackEvent("remove_from_favourites", mapOf("station_id" to station.id))
                     _state.update { it.copy(favouriteStationIds = (it.favouriteStationIds ?: emptyMap()) - station.id) }
                 } else {
-                    val fav = repo.addFavourite(station.id)
+                    // Pass the active fuel-type filter rather than letting this silently default
+                    // to E10 — a diesel driver quick-favouriting from the map should get diesel
+                    // alerts.
+                    val fav = repo.addFavourite(station.id, _state.value.selectedFuelType)
                     analytics.trackEvent("add_to_favourites", mapOf("station_id" to station.id))
                     _state.update { it.copy(favouriteStationIds = (it.favouriteStationIds ?: emptyMap()) + (station.id to fav.id)) }
                 }

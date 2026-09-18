@@ -1,8 +1,14 @@
 package uk.co.fuelprices.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -12,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -35,6 +42,9 @@ data class MapMarker(
     val snippet: String? = null,
     val id: Int? = null,
     val color: Color? = null,
+    // Rendered as a gold ring + star badge on the price chip, layered on top of (not replacing)
+    // the fuel-type fill color, so it never collides with that existing color coding.
+    val isFavourite: Boolean = false,
 )
 
 /** Builds a [CameraPosition] targeting (lat, lng) at the given zoom/bearing — extracted so the
@@ -140,23 +150,41 @@ fun FuelMapView(
                 MarkerComposable(
                     m.id ?: -1,
                     m.snippet,
+                    m.isFavourite,
                     state = MarkerState(position = LatLng(m.lat, m.lng)),
                     title = m.title,
+                    zIndex = if (m.isFavourite) 1f else 0f,
                     onClick = { onClick() },
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = m.color ?: MaterialTheme.colorScheme.primary,
-                        border = BorderStroke(1.dp, Color.White),
-                        shadowElevation = 3.dp,
-                    ) {
-                        Text(
-                            m.snippet,
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                        )
+                    Box {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = m.color ?: MaterialTheme.colorScheme.primary,
+                            // The chip's fill color still encodes fuel type — favourite status is
+                            // layered on top as a gold ring + star badge, never a color change, so
+                            // the two signals never collide.
+                            border = BorderStroke(if (m.isFavourite) 2.5.dp else 1.dp, if (m.isFavourite) Color(0xFFFFC107) else Color.White),
+                            shadowElevation = 3.dp,
+                        ) {
+                            Text(
+                                m.snippet,
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                            )
+                        }
+                        if (m.isFavourite) {
+                            Icon(
+                                Icons.Default.Star,
+                                null,
+                                tint = Color(0xFFFFC107),
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = 4.dp, y = (-4).dp)
+                                    .size(12.dp),
+                            )
+                        }
                     }
                 }
             }

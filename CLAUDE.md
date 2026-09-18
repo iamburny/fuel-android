@@ -12,6 +12,25 @@ Fuel Tracker UK (fueltracker.uk) — a native Kotlin Android app for viewing UK 
 
 > **For a detailed, user-facing feature reference — every phone screen, the car experience, data/offline behaviour, accounts, and the net-savings/drive-cost logic — see [`FEATURES.md`](FEATURES.md).** This section covers architecture; `FEATURES.md` covers *what the app does*.
 
+## Cross-platform parity & backward compatibility
+
+This app has a SwiftUI sibling, `../fuel-ios` — the two are expected to move together. **Any
+user-facing feature or bug fix here must land on `fuel-ios` too, in the same effort — not as a
+follow-up**, even when the request only mentions Android/Kotlin-specific things. Before starting,
+check `../fuel-ios` for the equivalent code path and current behavior; don't assume either platform
+already has the fix — verify field by field (this app's `NearbyViewModel.kt` already had a
+favourite-toggle race fix iOS was missing, but had the exact same missing re-entrancy guard as iOS
+in `DetailViewModel.kt` — only checking both directly surfaced which was which). The car/Automotive
+surfaces (`:automotive`, `core/.../car/`) are a deliberate exception — they have no iOS equivalent.
+
+`fuel-api` (the shared backend) also serves `fuel-web` and every already-installed copy of this app
+that hasn't updated yet — Play Store rollout means old APKs keep hitting the current backend for
+weeks after a new release. Don't assume a backend contract change is safe just because this app's
+current code handles it; see `../fuel-api/CLAUDE.md`'s backward-compatibility section, and keep this
+app's own parsing tolerant of fields the backend might add or change later (a missing/unrecognized
+field shouldn't crash deserialization — see the kotlinx.serialization keep-rules note under
+"R8 / ProGuard" below).
+
 ## Build Commands
 
 ```bash

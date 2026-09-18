@@ -49,7 +49,21 @@ fun DetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.toggleFavourite() }) {
+                    if (state.isFavourite) {
+                        IconButton(
+                            onClick = { viewModel.toggleNotify() },
+                            enabled = !state.pendingFavouriteToggle,
+                        ) {
+                            Icon(
+                                if (state.notifyOnDrop) Icons.Default.NotificationsActive else Icons.Default.NotificationsOff,
+                                if (state.notifyOnDrop) "Mute price-drop alerts" else "Enable price-drop alerts",
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = { viewModel.toggleFavourite() },
+                        enabled = !state.pendingFavouriteToggle,
+                    ) {
                         Icon(
                             if (state.isFavourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                             "Toggle favourite",
