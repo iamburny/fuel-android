@@ -202,20 +202,21 @@ class NearbyViewModel @Inject constructor(
                 // Ignore sub-30m jitter so the camera doesn't twitch while standing still.
                 val moved = prevLat == null || prevLng == null ||
                     haversineMiles(prevLat, prevLng, loc.latitude, loc.longitude) > 0.02
-                if (!moved) return@collect
                 // Only overwrite on a genuinely valid bearing reading — an invalid one (e.g.
                 // stopped at a light) keeps whatever was last known, so travel-direction-up mode
-                // holds its last heading instead of flickering back to north.
+                // holds its last heading instead of flickering back to north. Captured
+                // unconditionally (not gated on `moved`) since a bearing update is meaningful
+                // even on a sub-30m tick, e.g. turning in place at a junction.
                 val bearing = if (loc.hasBearing()) loc.bearing else s.lastKnownBearing
                 _state.value = s.copy(
-                    userLat = loc.latitude,
-                    userLng = loc.longitude,
+                    userLat = if (moved) loc.latitude else s.userLat,
+                    userLng = if (moved) loc.longitude else s.userLng,
                     lastKnownBearing = bearing,
                     mapBearing = when (s.mapOrientationMode) {
                         MapOrientationMode.NORTH_UP -> 0f
                         MapOrientationMode.TRAVEL_DIRECTION_UP -> bearing
                     },
-                    cameraRecenterToken = if (!s.isOffGpsCenter) {
+                    cameraRecenterToken = if (moved && !s.isOffGpsCenter) {
                         s.cameraRecenterToken + 1
                     } else {
                         s.cameraRecenterToken
