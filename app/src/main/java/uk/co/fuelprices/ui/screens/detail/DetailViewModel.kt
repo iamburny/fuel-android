@@ -7,6 +7,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import uk.co.fuelprices.data.api.NationalAverageDto
 import uk.co.fuelprices.data.api.PriceHistoryPoint
@@ -130,22 +131,30 @@ class DetailViewModel @Inject constructor(
         _state.value = _state.value.copy(pendingFavouriteToggle = true)
         viewModelScope.launch {
             try {
-                val current = _state.value
-                if (current.isFavourite && current.favouriteId != null) {
-                    repo.removeFavourite(current.favouriteId)
+                // Only these two fields decide which branch to take, read fresh right before the
+                // suspending call below — the actual state write in each branch goes through
+                // update {} against the live state at write time, not this pre-suspend read, so
+                // an unrelated concurrent state change (e.g. setFuelType()'s selectedFuelType/
+                // priceHistory update while this favourite toggle is still in flight) can't be
+                // silently clobbered by writing back a whole stale `current.copy(...)` snapshot
+                // once this resolves — the bug this replaces.
+                val isFavourite = _state.value.isFavourite
+                val favouriteId = _state.value.favouriteId
+                if (isFavourite && favouriteId != null) {
+                    repo.removeFavourite(favouriteId)
                     analytics.trackEvent("remove_from_favourites", mapOf("station_id" to stationId))
-                    _state.value = current.copy(isFavourite = false, favouriteId = null)
+                    _state.update { it.copy(isFavourite = false, favouriteId = null) }
                 } else {
                     // Pass the active fuel-type filter rather than letting this silently
                     // default to E10 — a diesel driver favouriting from here should get diesel
                     // alerts.
-                    val fav = repo.addFavourite(stationId, current.selectedFuelType ?: "E10")
+                    val fav = repo.addFavourite(stationId, _state.value.selectedFuelType ?: "E10")
                     analytics.trackEvent("add_to_favourites", mapOf("station_id" to stationId))
-                    _state.value = current.copy(isFavourite = true, favouriteId = fav.id, notifyOnDrop = true)
+                    _state.update { it.copy(isFavourite = true, favouriteId = fav.id, notifyOnDrop = true) }
                 }
             } catch (_: Exception) {
             } finally {
-                _state.value = _state.value.copy(pendingFavouriteToggle = false)
+                _state.update { it.copy(pendingFavouriteToggle = false) }
             }
         }
     }

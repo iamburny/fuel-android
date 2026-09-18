@@ -62,7 +62,10 @@ fun DetailScreen(
                     }
                     IconButton(
                         onClick = { viewModel.toggleFavourite() },
-                        enabled = !state.pendingFavouriteToggle,
+                        // Also gated on !isLoading: selectedFuelType is null until load()
+                        // completes, so a favourite tapped before then would fall back to the
+                        // "E10" default in toggleFavourite() rather than the real active filter.
+                        enabled = !state.pendingFavouriteToggle && !state.isLoading,
                     ) {
                         Icon(
                             if (state.isFavourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
