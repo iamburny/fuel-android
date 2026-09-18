@@ -43,7 +43,18 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="fueltracker.uk" />
+                <!--
+                  Scoped to exactly the paths DeepLinkTarget.fromUri resolves. Without these the
+                  filter claims every fueltracker.uk URL, so a link this app cannot route (most
+                  damagingly /reset-password, whose one-time token only works in the page that
+                  opened it) still leaves the browser and strands the user on the default tab.
+                  Anything not listed stays in the browser. Mirrors the components list in
+                  fuel-web's public/.well-known/apple-app-site-association.
+                -->
+                <data android:scheme="https" android:host="fueltracker.uk" android:path="/" />
+                <data android:scheme="https" android:host="fueltracker.uk" android:pathPrefix="/stations/" />
+                <data android:scheme="https" android:host="fueltracker.uk" android:path="/prices" />
+                <data android:scheme="https" android:host="fueltracker.uk" android:path="/settings" />
             </intent-filter>
         </activity>
 
