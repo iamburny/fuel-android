@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A sterling sign inside a circle, matching the iOS app's "sterlingsign.circle" SF Symbol on the
+  same control (fuel-ios: NearbyView.swift / CheapestToggleTip.swift). Material Icons ships no
+  pound-in-circle (MonetizationOn, used here before, is a dollar), so this is hand-assembled:
+
+  - The ring is a filled annulus (outer r=10, inner r=8.2 about the 24x24 viewport's centre),
+    with android:fillType="evenOdd" carving the hole out — evenOdd rather than two
+    opposite-winding subpaths (which is how Material's own generated icons do it) because it
+    carves the hole whichever way the two arcs happen to wind. A fill rather than a stroked
+    circle to stay consistent with Material's fill-only icons; Compose tints strokes perfectly
+    well, so that part is convention, not a constraint.
+  - The glyph is the U+00A3 outline from the bundled DM Mono Medium — the same brand font as the
+    "fuel tracker.uk" wordmark (BrandTitle) and the logo's own pound sign — scaled to 11.2dp
+    tall and centred, so the icon reads as the app's typeface rather than a traced approximation.
+    Regenerate with fontTools rather than editing the path data by hand.
+
+  No android:tint here: Compose's Icon supplies the tint (LocalContentColor) as a ColorFilter over
+  the whole vector, so these #FF000000 fills get replaced wholesale in either theme. Any reuse
+  outside Compose — an ImageView, or the Car App Library's IconCompat the way core's
+  ic_refresh.xml does — has to tint it itself, or it renders black.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:fillType="evenOdd"
+        android:pathData="M12,2a10,10 0 1,0 0,20a10,10 0 1,0 0,-20zM12,3.8a8.2,8.2 0 1,1 0,16.4a8.2,8.2 0 1,1 0,-16.4z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M8.53 17.60V16.59Q9.13 15.95 9.48 15.28Q9.84 14.61 9.84 13.70Q9.84 13.38 9.77 13.05H8.04V11.84H9.40Q9.21 11.36 9.05 10.84Q8.89 10.32 8.89 9.69Q8.89 8.68 9.34 7.94Q9.79 7.20 10.58 6.80Q11.38 6.40 12.42 6.40Q13.61 6.40 14.38 6.83Q15.15 7.27 15.54 8.01Q15.92 8.76 15.94 9.72H14.37Q14.32 8.90 13.83 8.36Q13.34 7.82 12.42 7.82Q11.66 7.82 11.08 8.28Q10.50 8.74 10.50 9.75Q10.50 10.27 10.66 10.80Q10.83 11.32 11.02 11.84H13.94V13.05H11.36Q11.41 13.37 11.41 13.65Q11.41 14.34 11.18 14.93Q10.95 15.52 10.45 16.07V16.17H15.96V17.60Z" />
+</vector>

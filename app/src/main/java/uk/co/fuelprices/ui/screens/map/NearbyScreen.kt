@@ -16,7 +16,6 @@ import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LocalGasStation
-import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Refresh
@@ -30,6 +29,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.hilt.navigation.compose.hiltViewModel
+import uk.co.fuelprices.R
 import uk.co.fuelprices.data.api.FuelTypes
 import uk.co.fuelprices.data.api.StationDto
 import uk.co.fuelprices.ui.components.AnnouncementBanner
@@ -187,10 +188,17 @@ fun NearbyScreen(
                             if (showPanel && state.searchQuery.isNotEmpty()) viewModel.setSearchQuery("")
                             showPanel = !showPanel
                         }) {
-                            Icon(
-                                if (showPanel) Icons.Default.Clear else Icons.Default.MonetizationOn,
-                                contentDescription = if (showPanel) "Close" else "Cheapest prices",
-                            )
+                            // Closed state is a pound sign in a circle rather than
+                            // Material's MonetizationOn (a *dollar* in a circle), to match the
+                            // iOS app's "sterlingsign.circle" SF Symbol on this same control.
+                            if (showPanel) {
+                                Icon(Icons.Default.Clear, contentDescription = "Close")
+                            } else {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_sterling_circle),
+                                    contentDescription = "Cheapest prices",
+                                )
+                            }
                         }
                     }
                 }
