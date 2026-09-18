@@ -7,6 +7,7 @@ plugins {
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
+    id("org.jetbrains.kotlinx.kover")
 }
 
 // Maps SDK API key — kept out of version control. Add MAPS_API_KEY=... to local.properties.
@@ -137,4 +138,16 @@ dependencies {
 
     // Android Auto phone projection (Car App Library)
     implementation("androidx.car.app:app-projected:1.7.0")
+
+    // Unit testing
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("io.mockk:mockk:1.13.13")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    testImplementation("app.cash.turbine:turbine:1.2.0")
+}
+
+tasks.withType<Test> {
+    // MockK mocks final Kotlin classes (the ViewModels' collaborators) via a self-attaching Java
+    // agent — needs these on JDK 17+ for the attach API to work reliably in the Gradle test JVM.
+    jvmArgs("-XX:+EnableDynamicAgentLoading", "-Djdk.attach.allowAttachSelf=true")
 }
