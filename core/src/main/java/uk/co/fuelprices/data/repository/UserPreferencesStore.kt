@@ -49,6 +49,16 @@ data class UserPreferences(
 @Singleton
 class UserPreferencesStore @Inject constructor(@ApplicationContext private val context: Context) {
 
+    /** The most recently active fuel-type filter from a browsing screen (Nearby's pill), if any
+     *  — deliberately session-only, never written to/read from DataStore, unlike everything else
+     *  in this class. Lets a favourite created from Detail after navigating from Nearby with a
+     *  non-default filter active inherit that filter instead of `preferences.fuelType` ("usual
+     *  fuel") — which stays reserved for exactly one job, seeding the very first pin state on a
+     *  fresh launch. `null` until the first pill interaction of this process, and reset to `null`
+     *  again on the next cold launch, matching that "usual fuel is only the fresh-open default"
+     *  rule exactly. */
+    var lastActiveFuelType: String? = null
+
     private val fuelTypeKey = stringPreferencesKey("fuel_type")
     private val mpgKey = doublePreferencesKey("mpg")
     private val tankCapacityKey = doublePreferencesKey("tank_capacity_litres")

@@ -23,10 +23,10 @@ data class FavouritesUiState(
     val creatingAlert: Boolean = false,
     val error: String? = null,
     val message: String? = null,
-    // Favourite ids with a toggleNotify PATCH currently in flight — guards against a rapid
-    // double-tap on a row's bell firing two overlapping requests, matching
-    // NearbyViewModel.pendingFavouriteToggles's pattern.
-    val pendingNotifyToggleIds: Set<Int> = emptySet(),
+    // Favourite ids with a toggleNotify/updateFuelType PATCH currently in flight — guards
+    // against a rapid double-tap (or overlapping notify+fuel-type edits on the same row) firing
+    // two overlapping requests, matching NearbyViewModel.pendingFavouriteToggles's pattern.
+    val pendingUpdateIds: Set<Int> = emptySet(),
 )
 
 @HiltViewModel
@@ -120,10 +120,8 @@ class FavouritesViewModel @Inject constructor(
     }
 
     fun toggleNotify(favourite: FavouriteDto) {
-        if (favourite.id in _state.value.pendingNotifyToggleIds) return
-        _state.value = _state.value.copy(
-            pendingNotifyToggleIds = _state.value.pendingNotifyToggleIds + favourite.id,
-        )
+        if (favourite.id in _state.value.pendingUpdateIds) return
+        _state.value = _state.value.copy(pendingUpdateIds = _state.value.pendingUpdateIds + favourite.id)
         viewModelScope.launch {
             val newValue = !favourite.notifyOnDrop
             try {
@@ -132,18 +130,42 @@ class FavouritesViewModel @Inject constructor(
                     if (newValue) "favourite_notify_enabled" else "favourite_notify_disabled",
                     mapOf("station_id" to favourite.stationId),
                 )
-                _state.value = _state.value.copy(
-                    favourites = _state.value.favourites.map {
-                        // The PATCH response omits `station` (a fresh favourite already has no
-                        // need for it beyond the id/station_id already known locally, same as
-                        // POST's response) — keep the one already loaded from GET.
-                        if (it.id == favourite.id) updated.copy(station = it.station) else it
-                    },
-                )
+                replaceFavourite(favourite, updated)
             } catch (_: Exception) {
             } finally {
-                _state.update { it.copy(pendingNotifyToggleIds = it.pendingNotifyToggleIds - favourite.id) }
+                _state.update { it.copy(pendingUpdateIds = it.pendingUpdateIds - favourite.id) }
             }
+        }
+    }
+
+    fun updateFuelType(favourite: FavouriteDto, newFuelType: String) {
+        if (favourite.id in _state.value.pendingUpdateIds || newFuelType == favourite.fuelType) return
+        _state.value = _state.value.copy(pendingUpdateIds = _state.value.pendingUpdateIds + favourite.id)
+        viewModelScope.launch {
+            try {
+                val updated = repo.updateFavouriteFuelType(favourite.id, newFuelType)
+                analytics.trackEvent(
+                    "favourite_fuel_type_changed",
+                    mapOf("station_id" to favourite.stationId, "fuel_type" to newFuelType),
+                )
+                replaceFavourite(favourite, updated)
+            } catch (_: Exception) {
+            } finally {
+                _state.update { it.copy(pendingUpdateIds = it.pendingUpdateIds - favourite.id) }
+            }
+        }
+    }
+
+    // Both PATCH responses omit `station` (a fresh favourite already has no need for it beyond
+    // the id/station_id already known locally, same as POST's response) — keep the one already
+    // loaded from GET.
+    private fun replaceFavourite(original: FavouriteDto, updated: FavouriteDto) {
+        _state.update { current ->
+            current.copy(
+                favourites = current.favourites.map {
+                    if (it.id == original.id) updated.copy(station = it.station) else it
+                },
+            )
         }
     }
 

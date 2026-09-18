@@ -151,9 +151,14 @@ class NearbyViewModel @Inject constructor(
         viewModelScope.launch {
             // Start from the user's saved "usual fuel" preference rather than always defaulting
             // to E10, and show the one-time toggle tooltip only if the user hasn't seen it yet.
+            // Prefer this session's last active pill value (e.g. this view model was torn down
+            // and rebuilt by a tab switch while the process stayed alive) over that preference —
+            // falls back to it on a genuinely fresh launch, when lastActiveFuelType is still null.
             val prefs = preferencesStore.get()
+            val fuelType = preferencesStore.lastActiveFuelType ?: prefs.fuelType
+            preferencesStore.lastActiveFuelType = fuelType
             _state.value = _state.value.copy(
-                selectedFuelType = prefs.fuelType,
+                selectedFuelType = fuelType,
                 showCheapestTooltip = !prefs.hasSeenNearbyCheapestTooltip,
                 // Chained: for a returning user who already dismissed the cheapest-toggle tooltip
                 // in a prior session but hasn't yet seen this one, it becomes eligible immediately.
@@ -339,6 +344,7 @@ class NearbyViewModel @Inject constructor(
         // async work needed. The panel's default list re-sorts for free since
         // cheapestSortedStations() is derived from selectedFuelType.
         _state.value = _state.value.copy(selectedFuelType = type)
+        preferencesStore.lastActiveFuelType = type
     }
 
     fun setRadius(miles: Double) {
