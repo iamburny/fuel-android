@@ -15,12 +15,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import uk.co.fuelprices.data.api.FavouriteDto
-import uk.co.fuelprices.data.api.StationDto
 import uk.co.fuelprices.data.api.StationListResponse
 import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferences
 import uk.co.fuelprices.data.repository.UserPreferencesStore
 import uk.co.fuelprices.testutil.MainDispatcherRule
+import uk.co.fuelprices.testutil.testStationDto
 import uk.co.fuelprices.util.AppAnalytics
 import uk.co.fuelprices.util.LocationHelper
 
@@ -58,18 +58,10 @@ class NearbyViewModelTest {
         return NearbyViewModel(repo, locationHelper, preferencesStore, analytics)
     }
 
-    private fun station(id: Int) = StationDto(
-        id = id,
-        govId = "gov-$id",
-        name = "Station $id",
-        latitude = 51.5,
-        longitude = -0.1,
-    )
-
     @Test
     fun `rapid double toggleFavourite on the same station results in exactly one repository call`() = runTest(mainDispatcherRule.dispatcher) {
         val viewModel = buildViewModel()
-        val station = station(7)
+        val station = testStationDto(id = 7, name = "Station 7")
         coEvery { repo.addFavourite(any(), any()) } returns FavouriteDto(77, 7, "E10", true)
 
         viewModel.toggleFavourite(station)
@@ -83,7 +75,7 @@ class NearbyViewModelTest {
     @Test
     fun `an in-flight toggle and a concurrent refreshFavourites both land without clobbering each other`() = runTest(mainDispatcherRule.dispatcher) {
         val viewModel = buildViewModel()
-        val station = station(7)
+        val station = testStationDto(id = 7, name = "Station 7")
         coEvery { repo.getFavourites() } returns listOf(FavouriteDto(50, 5, "E10", true))
         coEvery { repo.addFavourite(any(), any()) } coAnswers {
             delay(1_000)

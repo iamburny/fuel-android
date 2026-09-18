@@ -10,10 +10,16 @@ plugins {
     id("org.jetbrains.kotlinx.kover") version "0.8.3"
 }
 
-// Aggregates :core and :app's unit-test coverage into one report at the root
-// (./gradlew koverHtmlReport / koverXmlReport) — :automotive is deliberately excluded, it has no
-// tests.
-dependencies {
-    kover(project(":core"))
-    kover(project(":app"))
+// Coverage: each module reports its own debug-variant coverage directly
+// (./gradlew :core:koverHtmlReportDebug :app:koverHtmlReportDebug, same for XML) — Kover's own
+// unqualified koverHtmlReport/koverXmlReport tasks always aggregate every build variant, which
+// would force a release compile that no test ever exercises (:automotive is excluded entirely,
+// it has no tests either way), so the variant-qualified tasks are used instead of a root-level
+// merged report.
+subprojects {
+    tasks.withType<Test> {
+        // MockK mocks final Kotlin classes via a self-attaching Java agent — needs these on
+        // JDK 17+ for the attach API to work reliably in the Gradle test JVM.
+        jvmArgs("-XX:+EnableDynamicAgentLoading", "-Djdk.attach.allowAttachSelf=true")
+    }
 }

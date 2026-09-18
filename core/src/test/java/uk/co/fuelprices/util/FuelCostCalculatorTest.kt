@@ -4,10 +4,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import uk.co.fuelprices.data.api.NationalAverageDto
-import uk.co.fuelprices.data.api.PriceDto
-import uk.co.fuelprices.data.api.StationDto
 import uk.co.fuelprices.data.repository.UserPreferences
+import uk.co.fuelprices.testutil.testNationalAverageDto
+import uk.co.fuelprices.testutil.testPriceDto
+import uk.co.fuelprices.testutil.testStationDto
 import kotlin.math.abs
 
 /**
@@ -37,7 +37,7 @@ class FuelCostCalculatorTest {
 
     @Test
     fun `estimateNetSavingsPounds returns null without MPG`() {
-        val station = stationFixture(distanceMiles = 1.0, priceE10 = 130.0)
+        val station = testStationDto(distanceMiles = 1.0, prices = listOf(testPriceDto("E10", 130.0)))
         val averages = averagesFixture(e10 = 140.0, e5 = 120.0, b7Standard = 150.0)
         val prefs = UserPreferences(fuelType = "E10", mpg = null, tankCapacityLitres = 50.0)
 
@@ -46,7 +46,7 @@ class FuelCostCalculatorTest {
 
     @Test
     fun `estimateNetSavingsPounds is positive when station is cheaper than average`() {
-        val station = stationFixture(distanceMiles = 1.0, priceE10 = 100.0)
+        val station = testStationDto(distanceMiles = 1.0, prices = listOf(testPriceDto("E10", 100.0)))
         val averages = averagesFixture(e10 = 200.0, e5 = 90.0, b7Standard = 210.0, stationCount = 100)
         val prefs = UserPreferences(fuelType = "E10", mpg = 60.0, tankCapacityLitres = 50.0)
 
@@ -56,22 +56,12 @@ class FuelCostCalculatorTest {
 
     @Test
     fun `estimateNetSavingsPounds returns null when station has no distance`() {
-        val station = stationFixture(distanceMiles = null, priceE10 = 100.0)
+        val station = testStationDto(distanceMiles = null, prices = listOf(testPriceDto("E10", 100.0)))
         val averages = averagesFixture(e10 = 200.0, e5 = 90.0, b7Standard = 210.0)
         val prefs = UserPreferences(fuelType = "E10", mpg = 60.0, tankCapacityLitres = 50.0)
 
         assertNull(estimateNetSavingsPounds(station, averages, prefs))
     }
-
-    private fun stationFixture(distanceMiles: Double?, priceE10: Double) = StationDto(
-        id = 1,
-        govId = "gov-1",
-        name = "Test Station",
-        latitude = 51.5,
-        longitude = -0.1,
-        distanceMiles = distanceMiles,
-        prices = listOf(PriceDto(fuelType = "E10", pricePence = priceE10, reportedAt = "2026-01-01T00:00:00Z")),
-    )
 
     private fun averagesFixture(
         e10: Double,
@@ -79,8 +69,8 @@ class FuelCostCalculatorTest {
         b7Standard: Double,
         stationCount: Int = 1,
     ) = listOf(
-        NationalAverageDto("E10", e10, e10, e10, stationCount, "2026-01-01T00:00:00Z"),
-        NationalAverageDto("E5", e5, e5, e5, stationCount, "2026-01-01T00:00:00Z"),
-        NationalAverageDto("B7_STANDARD", b7Standard, b7Standard, b7Standard, stationCount, "2026-01-01T00:00:00Z"),
+        testNationalAverageDto("E10", e10, stationCount),
+        testNationalAverageDto("E5", e5, stationCount),
+        testNationalAverageDto("B7_STANDARD", b7Standard, stationCount),
     )
 }

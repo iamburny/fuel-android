@@ -31,17 +31,19 @@ jobs:
               "api_key": [{ "current_key": "ci-stub" }] }] }
           EOF
 
-      - name: Run unit tests
-        run: ./gradlew :core:testDebugUnitTest :app:testDebugUnitTest
-
-      - name: Coverage report
-        run: ./gradlew koverXmlReport koverHtmlReport
+      # One invocation covering both the test run and the coverage report so there's a single
+      # Gradle configuration phase, not two. Uses the debug-variant-qualified Kover tasks
+      # (koverXmlReportDebug/koverHtmlReportDebug) rather than the plain koverXmlReport/
+      # koverHtmlReport — those unqualified tasks aggregate every build variant, which would
+      # force a release compile that no test here ever exercises.
+      - name: Run unit tests and generate coverage
+        run: ./gradlew :core:testDebugUnitTest :app:testDebugUnitTest :core:koverXmlReportDebug :core:koverHtmlReportDebug :app:koverXmlReportDebug :app:koverHtmlReportDebug
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: coverage-report
-          path: build/reports/kover/
+          path: '**/build/reports/kover/'
 
       - uses: actions/upload-artifact@v4
         if: always()
