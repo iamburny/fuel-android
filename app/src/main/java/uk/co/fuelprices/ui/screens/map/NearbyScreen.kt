@@ -12,11 +12,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -241,6 +243,7 @@ fun NearbyScreen(
                     // granted throws a SecurityException, so this must track the real permission
                     // state rather than being assumed true.
                     showMyLocation = state.hasLocationPermission,
+                    bearing = state.mapBearing,
                 )
             } else {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -326,18 +329,32 @@ fun NearbyScreen(
                 }
             }
 
-            // Shown only once the user has dragged away from their GPS location — auto-recenter
-            // on filter/radius/mode changes was removed so it doesn't fight the drag, so a manual
-            // way back is needed (standard Google Maps convention). BottomStart (not BottomEnd) —
-            // the map's own zoom controls already occupy the bottom-right corner.
-            if (state.isOffGpsCenter) {
-                SmallFloatingActionButton(
-                    onClick = { viewModel.recenterOnGps() },
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(16.dp),
-                ) {
-                    Icon(Icons.Default.MyLocation, contentDescription = "Recenter on my location")
+            // Stacked bottom-left FABs: the recenter button (only shown once the user has dragged
+            // away from GPS-center — standard Google Maps convention) above the always-visible
+            // orientation toggle. BottomStart (not BottomEnd) — the map's own zoom controls
+            // already occupy the bottom-right corner. A shared Column keeps the toggle's anchor
+            // position fixed regardless of whether the recenter button happens to be showing.
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (state.isOffGpsCenter) {
+                    SmallFloatingActionButton(onClick = { viewModel.recenterOnGps() }) {
+                        Icon(Icons.Default.MyLocation, contentDescription = "Recenter on my location")
+                    }
+                }
+                SmallFloatingActionButton(onClick = { viewModel.toggleMapOrientation() }) {
+                    val isNorthUp = state.mapOrientationMode == MapOrientationMode.NORTH_UP
+                    Icon(
+                        if (isNorthUp) Icons.Default.Explore else Icons.Default.Navigation,
+                        contentDescription = if (isNorthUp) {
+                            "North up — tap to follow direction of travel"
+                        } else {
+                            "Following direction of travel — tap to switch to north up"
+                        },
+                    )
                 }
             }
 
