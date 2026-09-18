@@ -4,6 +4,7 @@ plugins {
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
     id("org.jetbrains.kotlin.plugin.serialization")
+    id("org.jetbrains.kotlinx.kover")
 }
 
 import java.util.Properties
@@ -103,4 +104,15 @@ dependencies {
     // Compose UI graphics (FuelTypes.COLORS uses androidx.compose.ui.graphics.Color)
     implementation(platform("androidx.compose:compose-bom:2024.11.00"))
     implementation("androidx.compose.ui:ui-graphics")
+
+    // Unit testing
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("io.mockk:mockk:1.13.13")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+}
+
+tasks.withType<Test> {
+    // MockK mocks final Kotlin classes (FuelDatabase, TokenStore, ...) via a self-attaching Java
+    // agent — needs these on JDK 17+ for the attach API to work reliably in the Gradle test JVM.
+    jvmArgs("-XX:+EnableDynamicAgentLoading", "-Djdk.attach.allowAttachSelf=true")
 }
