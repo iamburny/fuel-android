@@ -72,7 +72,7 @@ sealed interface DeepLinkTarget {
             return when {
                 segments.isEmpty() -> Home
                 segments[0] == "stations" && segments.size >= 2 ->
-                    segments[1].toIntOrNull()?.let { Station(it) }
+                    stationIdFrom(segments[1])?.let { Station(it) }
                 segments[0] == "prices" -> Prices
                 segments[0] == "settings" -> Settings
                 else -> null
@@ -80,6 +80,14 @@ sealed interface DeepLinkTarget {
         }
     }
 }
+
+/**
+ * The id out of a station path segment, which is either a bare id or an id followed by a
+ * human-readable slug — `4312` and `4312-shell-high-street-guildford` are the same station. Only a
+ * leading run of digits terminated by the end of the segment or a hyphen counts, so `shell-4312`
+ * and `4312abc` are not stations.
+ */
+internal fun stationIdFrom(segment: String): Int? = segment.substringBefore('-').toIntOrNull()
 
 /**
  * Navigate to a bottom-nav tab with the standard single-top / restore-state behaviour, so a deep
