@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import uk.co.fuelprices.data.api.NationalAverageDto
 import uk.co.fuelprices.data.api.PriceHistoryPoint
 import uk.co.fuelprices.data.api.StationDto
+import uk.co.fuelprices.data.api.cheapestUnflaggedPrice
 import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferencesStore
 import uk.co.fuelprices.util.AppAnalytics
@@ -95,7 +96,7 @@ class DetailViewModel @Inject constructor(
                 var driveCost: Double? = null
                 if (preferences.canEstimateDriveCost) {
                     val location = locationHelper.getCurrentLocation()
-                    val price = station.prices.firstOrNull { it.fuelType == preferences.fuelType }?.pricePence
+                    val price = station.cheapestUnflaggedPrice(preferences.fuelType)?.pricePence
                     if (location != null && price != null) {
                         distanceMiles = haversineMiles(
                             location.latitude, location.longitude, station.latitude, station.longitude,

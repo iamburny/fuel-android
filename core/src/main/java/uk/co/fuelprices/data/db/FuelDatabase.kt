@@ -46,6 +46,7 @@ data class FuelPriceEntity(
     val fuelType: String,
     val pricePence: Double,
     val reportedAt: String,
+    val warning: String? = null,
 )
 
 data class StationWithPrices(
@@ -105,10 +106,9 @@ interface StationDao {
 
 @Database(
     entities = [StationEntity::class, FuelPriceEntity::class],
-    // v2: StationEntity gained addressLine2/county/phone, the closure/motorway/supermarket flags,
-    // and JSON columns for amenities + opening hours. The cache is rebuildable, so the DI builder's
-    // fallbackToDestructiveMigration() handles the bump — no hand-written Migration needed.
-    version = 2,
+    // The cache is rebuildable, so the DI builder's fallbackToDestructiveMigration() handles
+    // schema bumps — no hand-written Migration needed.
+    version = 3,
     exportSchema = false,
 )
 abstract class FuelDatabase : RoomDatabase() {

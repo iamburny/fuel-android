@@ -115,6 +115,13 @@ Everything about one station, plus favouriting, directions, and history.
 - **Current Prices:** every fuel type, cheapest first, each with the label, an unmodified
   "Reported: <timestamp>", a **coloured delta vs national average** ("+1.2p vs national avg" —
   green if at/below average, red if above), and the bold coloured price.
+- **Flagged prices:** a price the backend caveats (`warning`: not re-reported in 60+ days, or far
+  below/above the national median) is still shown unmodified, but with an amber badge ("May be
+  out of date" / "May be incorrect"), a one-line explanation, and a "Report a price discrepancy"
+  link, and no national-average delta; flagged rows sort after the unflagged ones (phone and car).
+  Flagged prices are never used as a station's headline or
+  cheapest price elsewhere (map pins, list rows, the cheapest-first list, car rows and net-savings
+  sorting). Unknown or missing `warning` values are treated as unflagged.
 - **Amenities** chips (when present).
 - **Opening Hours** table for the seven weekdays (today's row highlighted/bold), plus a bank
   holidays sub-list when available.
@@ -162,7 +169,8 @@ onto the nearby-stations list — there is no home/menu screen. Flow:
 ### Station Detail
 
 - A `PaneTemplate`: address; per-fuel price rows (cheapest first) with a signed "vs national avg"
-  delta line (shown regardless of MPG/tank prefs); a required **Data source** attribution row; and
+  delta line (shown regardless of MPG/tank prefs; a flagged price shows its "May be out of date" /
+  "May be incorrect" caveat there instead); a required **Data source** attribution row; and
   a **Navigate** action that launches the car's navigation app to the station.
 
 ### Preferences & Fuel Type Picker

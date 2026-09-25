@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.foundation.horizontalScroll
 import uk.co.fuelprices.data.api.*
+import uk.co.fuelprices.ui.components.LIVE_SERVICE_URL
 import uk.co.fuelprices.ui.components.DataAttributionNotice
 import uk.co.fuelprices.ui.components.PriceLineChart
 import uk.co.fuelprices.ui.components.FuelMapView
@@ -187,8 +188,12 @@ fun DetailScreen(
                 modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 4.dp),
             )
 
-            station.prices.sortedBy { it.pricePence }.forEach { price ->
-                val nationalAvgPence = state.nationalAverages
+            // Flagged prices go last so the top row is always a usable price.
+            station.prices.sortedWith(compareBy({ it.isFlagged }, { it.pricePence })).forEach { price ->
+                val warning = price.priceWarning
+                // A caveated price is excluded from the national figures, so a delta against
+                // them would be meaningless.
+                val nationalAvgPence = if (warning != null) null else state.nationalAverages
                     .firstOrNull { it.fuelType == price.fuelType }?.avgPricePence
                 ListItem(
                     headlineContent = {
@@ -198,6 +203,9 @@ fun DetailScreen(
                         Column {
                             // Compliance: show original timestamp unmodified
                             Text("Reported: ${price.reportedAt}")
+                            if (warning != null) {
+                                PriceWarningNotice(warning)
+                            }
                             if (nationalAvgPence != null) {
                                 val delta = price.pricePence - nationalAvgPence
                                 Text(
@@ -354,6 +362,37 @@ fun DetailScreen(
 private fun formatOpeningTime(value: String?): String {
     if (value == null) return ""
     return if (Regex("""^\d{1,2}:\d{2}:\d{2}$""").matches(value)) value.dropLast(3) else value
+}
+
+/** Amber, in the same chip style as the station status badges above the address. */
+private val PriceWarningAmber = Color(0xFFF59E0B)
+
+/** Caveat for a price the backend has flagged: a badge, why it was flagged, and a shortcut to
+ *  the official discrepancy report. The price itself is still shown unmodified alongside. */
+@Composable
+private fun PriceWarningNotice(warning: PriceWarning) {
+    val context = LocalContext.current
+    Column(Modifier.padding(top = 4.dp)) {
+        SuggestionChip(
+            onClick = {},
+            icon = { Icon(Icons.Default.Warning, null, Modifier.size(14.dp)) },
+            label = { Text(warning.badgeLabel, style = MaterialTheme.typography.labelSmall) },
+            colors = SuggestionChipDefaults.suggestionChipColors(
+                containerColor = PriceWarningAmber.copy(alpha = 0.15f),
+                labelColor = PriceWarningAmber,
+                iconContentColor = PriceWarningAmber,
+            ),
+        )
+        Text(warning.explanation, style = MaterialTheme.typography.bodySmall)
+        TextButton(
+            onClick = {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LIVE_SERVICE_URL)))
+            },
+            contentPadding = PaddingValues(0.dp),
+        ) {
+            Text("Report a price discrepancy", style = MaterialTheme.typography.labelMedium)
+        }
+    }
 }
 
 @Composable
