@@ -31,7 +31,8 @@ const val DEFAULT_DATA_NOTICE: String =
         "independent app and is not affiliated with or endorsed by HM Government."
 
 private const val OFFICIAL_SOURCE_URL = "https://www.gov.uk/government/collections/fuel-finder"
-private const val LIVE_SERVICE_URL = "https://www.fuel-finder.service.gov.uk/"
+/** The live Fuel Finder service, where price discrepancies are reported. */
+internal const val LIVE_SERVICE_URL = "https://www.fuel-finder.service.gov.uk/"
 
 @Composable
 fun DataAttributionNotice(

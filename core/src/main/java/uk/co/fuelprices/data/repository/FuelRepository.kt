@@ -272,6 +272,7 @@ class FuelRepository @Inject constructor(
                     fuelType = price.fuelType,
                     pricePence = price.pricePence,
                     reportedAt = price.reportedAt,
+                    warning = price.warning,
                 )
             }
         }
@@ -296,7 +297,7 @@ class FuelRepository @Inject constructor(
             haversineMiles(originLat, originLng, station.latitude, station.longitude)
         } else null,
         prices = prices.map {
-            PriceDto(fuelType = it.fuelType, pricePence = it.pricePence, reportedAt = it.reportedAt)
+            PriceDto(fuelType = it.fuelType, pricePence = it.pricePence, reportedAt = it.reportedAt, warning = it.warning)
         },
     )
 }

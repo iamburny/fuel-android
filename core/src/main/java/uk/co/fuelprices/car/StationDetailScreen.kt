@@ -43,13 +43,19 @@ class StationDetailScreen(
         if (station.prices.isEmpty()) {
             paneBuilder.addRow(Row.Builder().setTitle("No prices reported").build())
         } else {
-            station.prices.sortedBy { it.pricePence }.forEach { price ->
+            // Flagged prices go last so the top row is always a usable price.
+            station.prices.sortedWith(compareBy({ it.isFlagged }, { it.pricePence })).forEach { price ->
                 val label = if (useLongFuelNames) FuelTypes.longLabel(price.fuelType) else FuelTypes.shortLabel(price.fuelType)
                 val rowBuilder = Row.Builder()
                     .setTitle(label)
                     .addText("%.1fp".format(price.pricePence))
                 val avgPence = nationalAverages.firstOrNull { it.fuelType == price.fuelType }?.avgPricePence
-                if (avgPence != null) {
+                val warning = price.priceWarning
+                if (warning != null) {
+                    // Replaces the national-average delta, which is meaningless for a price the
+                    // national figures exclude.
+                    rowBuilder.addText(warning.badgeLabel)
+                } else if (avgPence != null) {
                     rowBuilder.addText("%+.1fp vs national avg".format(price.pricePence - avgPence))
                 }
                 paneBuilder.addRow(rowBuilder.build())

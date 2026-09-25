@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import uk.co.fuelprices.data.api.StationDto
+import uk.co.fuelprices.data.api.cheapestUnflaggedPrice
 import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferencesStore
 import uk.co.fuelprices.util.AppAnalytics
@@ -107,15 +108,15 @@ sealed interface NearbyFavouriteEvent {
 
 /** Client-side derived view of whatever's currently pinned on the map (viewportStations after a
  *  drag, else the GPS-anchored `stations`), sorted ascending by price for `selectedFuelType` and
- *  filtered to stations that report one. No network call — this is a pure function over state
+ *  filtered to stations that report one (flagged prices don't count, matching the backend's
+ *  cheapest-stations ranking). No network call — this is a pure function over state
  *  already held, so it can't drift from what's actually pinned on the map, and re-evaluates live
  *  (fuel-type change / a drag while the panel is open) since it's called fresh on every
  *  recomposition rather than cached. Backs the search panel's default (non-search) list. */
 fun NearbyUiState.cheapestSortedStations(): List<StationDto> =
     (viewportStations ?: stations)
         .mapNotNull { station ->
-            station.prices.filter { it.fuelType == selectedFuelType }.minByOrNull { it.pricePence }
-                ?.let { station to it.pricePence }
+            station.cheapestUnflaggedPrice(selectedFuelType)?.let { station to it.pricePence }
         }
         .sortedBy { it.second }
         .map { it.first }

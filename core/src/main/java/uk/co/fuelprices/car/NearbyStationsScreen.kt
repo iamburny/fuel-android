@@ -32,6 +32,7 @@ import uk.co.fuelprices.core.R
 import uk.co.fuelprices.data.api.FuelTypes
 import uk.co.fuelprices.data.api.NationalAverageDto
 import uk.co.fuelprices.data.api.StationDto
+import uk.co.fuelprices.data.api.cheapestUnflaggedPrice
 import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferences
 import uk.co.fuelprices.data.repository.UserPreferencesStore
@@ -219,9 +220,11 @@ class NearbyStationsScreen(
     private fun buildStationRow(station: StationDto): Row {
         // Show the user's chosen "usual fuel" price, not just whatever's cheapest at this
         // station — falls back to the station's cheapest reported price if it doesn't sell the
-        // preferred fuel type at all.
-        val displayPrice = station.prices.firstOrNull { it.fuelType == preferences.fuelType }
-            ?: station.prices.minByOrNull { it.pricePence }
+        // preferred fuel type at all. Flagged prices are never the headline, since the car row has
+        // no room for their caveat: a flagged preferred-fuel price also falls back, to the
+        // cheapest unflagged price of another fuel (the row's label names which fuel).
+        val displayPrice = station.cheapestUnflaggedPrice(preferences.fuelType)
+            ?: station.prices.filterNot { it.isFlagged }.minByOrNull { it.pricePence }
         val priceText = displayPrice?.let {
             val label = if (preferences.useLongFuelNames) FuelTypes.longLabel(it.fuelType) else FuelTypes.shortLabel(it.fuelType)
             "$label: %.1fp".format(it.pricePence)
