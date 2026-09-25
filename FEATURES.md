@@ -115,7 +115,7 @@ Everything about one station, plus favouriting, directions, and history.
 - **Current Prices:** every fuel type, cheapest first, each with the label, an unmodified
   "Reported: <timestamp>", a **coloured delta vs national average** ("+1.2p vs national avg" —
   green if at/below average, red if above), and the bold coloured price.
-- **Flagged prices:** a price the backend caveats (`warning`: not re-reported in 60+ days, or far
+- **Flagged prices:** a price the backend caveats (`warning`: price unchanged for 60+ days, or far
   below/above the national median) is still shown unmodified, but with an amber badge ("May be
   out of date" / "May be incorrect"), a one-line explanation, and a "Report a price discrepancy"
   link, and no national-average delta; flagged rows sort after the unflagged ones (phone and car).

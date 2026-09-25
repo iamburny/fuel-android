@@ -161,7 +161,7 @@ enum class PriceWarning(val code: String, val badgeLabel: String, val explanatio
     STALE(
         "stale",
         "May be out of date",
-        "Not updated in over 60 days, so this price may be out of date.",
+        "Unchanged for over 60 days, so this price may be out of date.",
     ),
     UNUSUALLY_LOW(
         "unusually_low",
