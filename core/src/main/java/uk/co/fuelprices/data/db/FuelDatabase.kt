@@ -27,6 +27,8 @@ data class StationEntity(
     // shape because the original JSON is round-tripped verbatim.
     val amenitiesJson: String?,
     val openingHoursJson: String?,
+    // Driver-reported, cached alongside the station so cache-served lists still show the warning.
+    val priceAccuracyWarning: Boolean = false,
     val lastFetchedAt: Long = System.currentTimeMillis(),
 )
 
@@ -105,10 +107,9 @@ interface StationDao {
 
 @Database(
     entities = [StationEntity::class, FuelPriceEntity::class],
-    // v2: StationEntity gained addressLine2/county/phone, the closure/motorway/supermarket flags,
-    // and JSON columns for amenities + opening hours. The cache is rebuildable, so the DI builder's
-    // fallbackToDestructiveMigration() handles the bump — no hand-written Migration needed.
-    version = 2,
+    // The cache is rebuildable, so the DI builder's fallbackToDestructiveMigration() handles any
+    // version bump by dropping it — no hand-written Migration needed.
+    version = 3,
     exportSchema = false,
 )
 abstract class FuelDatabase : RoomDatabase() {

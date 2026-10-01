@@ -252,7 +252,11 @@ fun FuelApp(
                     route = Screen.Detail.route,
                     arguments = listOf(navArgument("stationId") { type = NavType.IntType }),
                 ) {
-                    DetailScreen(onBack = { navController.popBackStack() })
+                    DetailScreen(
+                        onBack = { navController.popBackStack() },
+                        // Auth pops back here on success, and Detail re-reads the session on resume.
+                        onSignIn = { navController.navigate(Screen.Auth.route) },
+                    )
                 }
             }
         }

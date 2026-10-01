@@ -43,11 +43,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import uk.co.fuelprices.R
 import uk.co.fuelprices.data.api.FuelTypes
 import uk.co.fuelprices.data.api.StationDto
+import uk.co.fuelprices.ui.components.ACCURACY_WARNING_LABEL
+import uk.co.fuelprices.ui.components.AccuracyWarningChip
 import uk.co.fuelprices.ui.components.AnnouncementBanner
 import uk.co.fuelprices.ui.components.BrandTitle
 import uk.co.fuelprices.ui.components.DataAttributionNotice
 import uk.co.fuelprices.ui.components.FuelMapView
 import uk.co.fuelprices.ui.components.MapMarker
+import uk.co.fuelprices.ui.components.StationRatingsFlagViewModel
 import uk.co.fuelprices.ui.theme.fuelColor
 import uk.co.fuelprices.ui.theme.fuelLabel
 import uk.co.fuelprices.util.approximateDistanceMiles
@@ -58,8 +61,10 @@ fun NearbyScreen(
     onStationClick: (Int) -> Unit,
     onSignIn: () -> Unit,
     viewModel: NearbyViewModel = hiltViewModel(),
+    ratingsFlag: StationRatingsFlagViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val showAccuracyWarnings by ratingsFlag.enabled.collectAsState()
     // Plain boolean instead of a draggable BottomSheetScaffold: a real bottom sheet's drag
     // gestures can land in intermediate anchor states (partially expanded at a "peek" height)
     // that don't cleanly map to a simple open/closed toggle button. This panel is fully
@@ -216,14 +221,17 @@ fun NearbyScreen(
                     val cheapestPrice = station.prices
                         .filter { it.fuelType == state.selectedFuelType }
                         .minByOrNull { it.pricePence }
+                    val warn = showAccuracyWarnings && station.priceAccuracyWarning
                     MapMarker(
                         lat = station.latitude,
                         lng = station.longitude,
-                        title = station.name,
+                        // The title is the pin's accessibility label, so the warning is read out too.
+                        title = if (warn) "${station.name}. $ACCURACY_WARNING_LABEL" else station.name,
                         snippet = cheapestPrice?.let { "%.1fp".format(it.pricePence) } ?: "No price",
                         id = station.id,
                         color = FuelTypes.color(state.selectedFuelType),
                         isFavourite = state.favouriteStationIds?.get(station.id) != null,
+                        priceAccuracyWarning = warn,
                     )
                 }
             } else emptyList()
@@ -520,6 +528,7 @@ fun NearbyScreen(
                                             // true/false so the heart shows disabled rather than a
                                             // possibly-wrong unfavourited state.
                                             isFavourite = state.favouriteStationIds?.let { station.id in it },
+                                            showAccuracyWarning = showAccuracyWarnings && station.priceAccuracyWarning,
                                             onToggleFavourite = { viewModel.toggleFavourite(station) },
                                             onClick = {
                                                 viewModel.trackStationClick(station.id, "list")
@@ -554,6 +563,7 @@ private fun StationRow(
     userLat: Double?,
     userLng: Double?,
     isFavourite: Boolean?,
+    showAccuracyWarning: Boolean,
     onToggleFavourite: () -> Unit,
     onClick: () -> Unit,
 ) {
@@ -580,15 +590,20 @@ private fun StationRow(
         },
         headlineContent = { Text(station.name, fontWeight = FontWeight.Medium) },
         supportingContent = {
-            Text(
-                listOfNotNull(
-                    station.brand,
-                    distance?.let { (miles, isApproximate) ->
-                        (if (isApproximate) "~" else "") + "%.1f mi".format(miles)
-                    },
-                    station.postcode,
-                ).joinToString(" · ")
-            )
+            Column {
+                Text(
+                    listOfNotNull(
+                        station.brand,
+                        distance?.let { (miles, isApproximate) ->
+                            (if (isApproximate) "~" else "") + "%.1f mi".format(miles)
+                        },
+                        station.postcode,
+                    ).joinToString(" · ")
+                )
+                if (showAccuracyWarning) {
+                    AccuracyWarningChip(Modifier.padding(top = 4.dp))
+                }
+            }
         },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
