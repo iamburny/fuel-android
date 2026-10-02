@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import uk.co.fuelprices.util.StationText
 import java.time.DayOfWeek
 import java.time.LocalDate
 
@@ -185,7 +186,8 @@ fun DetailScreen(
             // Station info
             Column(Modifier.padding(16.dp)) {
                 Text(
-                    station.name,
+                    // The feed is mostly ALL CAPS; shown in the same title case as the website.
+                    StationText.displayName(station.name),
                     style = MaterialTheme.typography.headlineSmall,
                     modifier = Modifier.semantics { heading() },
                 )
