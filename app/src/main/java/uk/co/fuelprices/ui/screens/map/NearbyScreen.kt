@@ -43,6 +43,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import uk.co.fuelprices.R
 import uk.co.fuelprices.data.api.FuelTypes
 import uk.co.fuelprices.data.api.StationDto
+import uk.co.fuelprices.data.api.cheapestUnflaggedPrice
 import uk.co.fuelprices.ui.components.AnnouncementBanner
 import uk.co.fuelprices.ui.components.BrandTitle
 import uk.co.fuelprices.ui.components.DataAttributionNotice
@@ -213,9 +214,7 @@ fun NearbyScreen(
             // set via state.cheapestSortedStations(), so it always matches what's pinned here.
             val mapMarkers = if (!state.isLoading) {
                 (state.viewportStations ?: state.stations).map { station ->
-                    val cheapestPrice = station.prices
-                        .filter { it.fuelType == state.selectedFuelType }
-                        .minByOrNull { it.pricePence }
+                    val cheapestPrice = station.cheapestUnflaggedPrice(state.selectedFuelType)
                     MapMarker(
                         lat = station.latitude,
                         lng = station.longitude,
@@ -557,9 +556,7 @@ private fun StationRow(
     onToggleFavourite: () -> Unit,
     onClick: () -> Unit,
 ) {
-    val price = station.prices
-        .filter { it.fuelType == fuelType }
-        .minByOrNull { it.pricePence }
+    val price = station.cheapestUnflaggedPrice(fuelType)
     val distance = station.approximateDistanceMiles(userLat, userLng)
 
     ListItem(

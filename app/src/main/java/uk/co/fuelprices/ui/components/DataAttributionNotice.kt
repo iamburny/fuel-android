@@ -33,11 +33,11 @@ const val DEFAULT_DATA_NOTICE: String =
 private const val OFFICIAL_SOURCE_URL = "https://www.gov.uk/government/collections/fuel-finder"
 
 /**
- * Destination of "Report a price discrepancy", which the Fuel Finder scheme requires apps showing
+ * Destination of every "Report a price discrepancy" link, which the Fuel Finder scheme requires apps showing
  * its prices to offer. GOV.UK's guidance page explains how to report a wrong price and links on to
  * the service's report form, so the app doesn't depend on the form's own URL.
  */
-private const val DISCREPANCY_REPORT_URL =
+internal const val DISCREPANCY_REPORT_URL =
     "https://www.gov.uk/guidance/report-an-error-in-fuel-prices-or-forecourt-details"
 
 @Composable
