@@ -271,16 +271,19 @@ class StationRatingsViewModel @Inject constructor(
 
     private fun initialForm(mine: MyRatingResponse?): RateFormState {
         val existing = mine?.rating?.takeIf { isEditable(it) }
-        val fuels = stationFuelTypes
+        // An edit keeps its fuel on offer even if the station has since stopped listing it, so
+        // saving doesn't quietly drop the price check.
+        val fuels = existing?.fuelType?.takeIf { it !in stationFuelTypes }
+            ?.let { stationFuelTypes + it } ?: stationFuelTypes
         val fuel = when {
-            existing != null -> existing.fuelType?.takeIf { it in fuels }
+            existing != null -> existing.fuelType
             preferredFuelType != null && preferredFuelType in fuels -> preferredFuelType
             else -> fuels.firstOrNull()
         }
         return RateFormState(
             fuelTypes = fuels,
             fuelType = fuel,
-            priceMatched = existing?.priceMatched?.takeIf { fuel != null },
+            priceMatched = existing?.priceMatched,
             paidText = existing?.reportedPricePence?.let(::formatPence) ?: "",
             stars = existing?.stars,
             comment = existing?.comment ?: "",
@@ -309,7 +312,9 @@ class StationRatingsViewModel @Inject constructor(
         val mode = s.sheetMode as? RateSheetMode.Form ?: return false
         val f = sheet.form
         return !sheet.submitting && (f.fuelType == null || f.priceMatched != null) &&
-            f.stars != null && f.paidValid &&
+            f.stars != null &&
+            // The paid price only counts while its field is showing.
+            (f.fuelType == null || f.priceMatched != false || f.paidValid) &&
             (!mode.needsTerms || f.termsAccepted)
     }
 

@@ -289,6 +289,32 @@ class StationRatingsViewModelTest {
     }
 
     @Test
+    fun `a half-typed paid price stops blocking once the driver switches to no fuel`() = runTest(mainDispatcherRule.dispatcher) {
+        val vm = buildViewModel()
+        advanceUntilIdle()
+
+        vm.onRateClicked()
+        vm.setPriceMatched(false)
+        vm.setPaidText("12")
+        vm.setStars(4)
+        assertFalse(vm.canSubmit())
+        vm.setFuelType(null)
+        assertTrue(vm.canSubmit())
+    }
+
+    @Test
+    fun `an edited rating keeps a fuel the station no longer lists`() = runTest(mainDispatcherRule.dispatcher) {
+        val vm = buildViewModel(mine = MyRatingResponse(rating = ownRating(fuelType = "SDV"), termsVersion = "1"))
+        advanceUntilIdle()
+
+        vm.onRateClicked()
+        val form = vm.state.value.sheet!!.form
+        assertEquals("SDV", form.fuelType)
+        assertTrue("SDV" in form.fuelTypes)
+        assertEquals(false, form.priceMatched)
+    }
+
+    @Test
     fun `a station listing no prices can still be rated without fuel`() = runTest(mainDispatcherRule.dispatcher) {
         val vm = buildViewModel()
         vm.setStationFuelTypes(emptyList())
