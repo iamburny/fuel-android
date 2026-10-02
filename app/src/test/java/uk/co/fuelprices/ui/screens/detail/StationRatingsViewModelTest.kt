@@ -302,6 +302,42 @@ class StationRatingsViewModelTest {
     }
 
     @Test
+    fun `a retried submit still counts as saved after the server tidied the comment`() = runTest(mainDispatcherRule.dispatcher) {
+        val vm = buildViewModel()
+        advanceUntilIdle()
+        val stored = ownRating(commentStatus = "held").copy(
+            fuelType = "E10", priceMatched = true, reportedPricePence = null, stars = 4, comment = "Pump was dearer",
+        )
+        coEvery { repo.createRating(1, any()) } throws
+            RatingException(409, "You can rate this station once every 7 days.", "cooldown", rating = stored)
+
+        vm.onRateClicked()
+        vm.fillValidForm()
+        vm.setComment("Pump  was\n dearer\u200B ")
+        vm.submit()
+        advanceUntilIdle()
+
+        assertEquals(RateSheetMode.Saved(stored), vm.state.value.sheetMode)
+    }
+
+    @Test
+    fun `a refused submit re-reads the user's state so the sheet shows why`() = runTest(mainDispatcherRule.dispatcher) {
+        val vm = buildViewModel()
+        advanceUntilIdle()
+        coEvery { repo.getMyRating(1) } returns
+            MyRatingResponse(blockers = listOf("daily_cap"), dailyCapResetsAt = FUTURE, termsVersion = "1")
+        coEvery { repo.createRating(1, any()) } throws
+            RatingException(403, "You can leave up to 5 ratings a day.", "daily_cap")
+
+        vm.onRateClicked()
+        vm.fillValidForm()
+        vm.submit()
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.sheetMode is RateSheetMode.Blocked)
+    }
+
+    @Test
     fun `a cooldown carrying a different rating is an error, not a silent success`() = runTest(mainDispatcherRule.dispatcher) {
         val vm = buildViewModel()
         advanceUntilIdle()

@@ -86,8 +86,8 @@ interface StationDao {
 
     /**
      * Offline fallback for the server's `/api/stations/search`. Matches the same four fields the
-     * server does — name, postcode, brand and **town** (town was missing here for a long time,
-     * silently making offline search narrower than online search for anyone typing a place name).
+     * server does — name, postcode, brand and town — so a place name finds the same stations
+     * offline as online.
      *
      * There is deliberately no `ORDER BY`: the caller ([uk.co.fuelprices.data.repository.FuelRepository])
      * sorts by distance in Kotlin when it has a fix, since SQLite can't do haversine. [limit] is

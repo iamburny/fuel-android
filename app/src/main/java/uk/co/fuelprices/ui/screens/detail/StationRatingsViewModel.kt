@@ -100,7 +100,13 @@ class StationRatingsViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            preferredFuelType = try { preferencesStore.get().fuelType } catch (_: Exception) { null }
+            preferredFuelType = try {
+                preferencesStore.get().fuelType
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
         }
         // StateFlow, so this also runs once straight away with the current flag state.
         viewModelScope.launch {
@@ -183,6 +189,8 @@ class StationRatingsViewModel @Inject constructor(
             try {
                 val res = repo.getStationRatings(stationId, 1)
                 _state.update { it.copy(comments = res.items, total = res.total, page = 1) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
             }
         }
@@ -203,6 +211,8 @@ class StationRatingsViewModel @Inject constructor(
                         page = s.page + 1,
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // What's shown stays in place and the button stays for another try.
             } finally {
@@ -347,7 +357,12 @@ class StationRatingsViewModel @Inject constructor(
                     onSaved(stored)
                 } else {
                     setSheetError(errorMessage(e))
+                    // A blocker, cooldown or closed edit window means the form no longer applies;
+                    // re-reading moves the sheet on to the matching message.
+                    if (e.status == 403 || e.status == 409) reloadMine()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 setSheetError(GENERIC_ERROR)
             } finally {
@@ -359,6 +374,7 @@ class StationRatingsViewModel @Inject constructor(
     private suspend fun onSaved(rating: OwnRatingDto) {
         _state.update { it.copy(sheet = it.sheet?.copy(saved = rating, error = null)) }
         reloadMine()
+        loadFirstPage()
     }
 
     private fun setSheetError(message: String) {
@@ -375,6 +391,8 @@ class StationRatingsViewModel @Inject constructor(
                 _state.update { it.copy(sheet = it.sheet?.copy(verifyStatus = VerifyEmailStatus.SENT)) }
                 // Already verified elsewhere: reloading moves the sheet straight on to the form.
                 if (res.alreadyVerified) reloadMine()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update {
                     it.copy(sheet = it.sheet?.copy(verifyStatus = VerifyEmailStatus.ERROR, verifyError = errorMessage(e)))
@@ -401,6 +419,8 @@ class StationRatingsViewModel @Inject constructor(
                 repo.reportRating(ratingId, reason)
                 analytics.trackEvent("report_rating", mapOf("rating_id" to ratingId))
                 "Thanks. We'll review this comment."
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 errorMessage(e)
             }
@@ -422,6 +442,8 @@ class StationRatingsViewModel @Inject constructor(
             try {
                 val ref = repo.blockRatingAuthor(ratingId)
                 _state.update { it.copy(blockedAuthorRefs = it.blockedAuthorRefs + ref) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update { it.copy(commentMessages = it.commentMessages + (ratingId to errorMessage(e))) }
             } finally {
@@ -438,6 +460,8 @@ class StationRatingsViewModel @Inject constructor(
                 try {
                     repo.unblockReviewer(ref)
                     _state.update { it.copy(blockedAuthorRefs = it.blockedAuthorRefs - ref) }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                 }
             }
@@ -457,12 +481,23 @@ class StationRatingsViewModel @Inject constructor(
         return GENERIC_ERROR
     }
 
+    /** Compares as the server stores it: comment whitespace tidied, price rounded to 0.1p. */
     private fun OwnRatingDto.matches(input: RatingInputRequest): Boolean =
         fuelType == input.fuelType && priceMatched == input.priceMatched && stars == input.stars &&
-            reportedPricePence == input.reportedPricePence && comment == input.comment
+            reportedPricePence == input.reportedPricePence?.let { Math.round(it * 10) / 10.0 } &&
+            comment == input.comment?.let(::normaliseComment)
 
     private companion object {
         const val GENERIC_ERROR = "Something went wrong. Please try again."
+
+        private val CONTROL_CHARS = Regex("[\u0000-\u001f\u007f]")
+        private val INVISIBLE_CHARS = Regex("[\u00ad\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]")
+        private val WHITESPACE = Regex("\\s+")
+
+        /** The same tidying fuel-api applies before storing a comment; empty becomes null. */
+        fun normaliseComment(value: String): String? =
+            value.replace(CONTROL_CHARS, " ").replace(INVISIBLE_CHARS, "").replace(WHITESPACE, " ").trim()
+                .ifEmpty { null }
 
         fun formatPence(value: Double): String =
             if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()

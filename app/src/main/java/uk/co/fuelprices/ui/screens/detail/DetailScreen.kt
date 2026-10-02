@@ -384,7 +384,8 @@ private fun PriceWarningNotice(warning: PriceWarning) {
             label = { Text(warning.badgeLabel, style = MaterialTheme.typography.labelSmall) },
             colors = SuggestionChipDefaults.suggestionChipColors(
                 containerColor = PriceWarningAmber.copy(alpha = 0.15f),
-                labelColor = PriceWarningAmber,
+                // Amber text on its own tint is too faint to read; the icon carries the colour.
+                labelColor = MaterialTheme.colorScheme.onSurface,
                 iconContentColor = PriceWarningAmber,
             ),
         )

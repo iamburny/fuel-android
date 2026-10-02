@@ -83,8 +83,8 @@ class NearbyViewModelSearchTest {
             val vm = newViewModel()
             advanceUntilIdle()
 
-            // The map has been anchored to the fallback — this is the exact state that used to
-            // leak Oxford into the search request.
+            // The map is anchored to the fallback centre, which must not be sent as the user's
+            // position.
             assertEquals(DefaultLocation.LAT, vm.state.value.userLat)
             assertEquals(DefaultLocation.LNG, vm.state.value.userLng)
             assertFalse("a fallback centre is not a GPS fix", vm.state.value.hasGpsFix)

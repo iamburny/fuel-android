@@ -1,5 +1,6 @@
 package uk.co.fuelprices.ui.screens.preferences
 
+import kotlinx.coroutines.CancellationException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -139,6 +140,8 @@ class PreferencesViewModel @Inject constructor(
                 } else {
                     _state.value = _state.value.copy(deleteAccountError = e.detail ?: "Please try again.")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 _state.value = _state.value.copy(deleteAccountError = "Couldn't reach the server. Please try again.")
             } finally {
@@ -221,6 +224,8 @@ class PreferencesViewModel @Inject constructor(
                     themeMode = prefs.themeMode,
                 ),
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
         }
     }

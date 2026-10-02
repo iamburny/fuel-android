@@ -521,8 +521,10 @@ fun NearbyScreen(
                                         StationRow(
                                             station = station,
                                             fuelType = state.selectedFuelType,
-                                            userLat = state.userLat,
-                                            userLng = state.userLng,
+                                            // Only a real fix: the fallback centre would label
+                                            // every result with a distance from somewhere else.
+                                            userLat = state.userLat.takeIf { state.hasGpsFix },
+                                            userLng = state.userLng.takeIf { state.hasGpsFix },
                                             // null (not-yet-loaded) is preserved distinctly from
                                             // true/false so the heart shows disabled rather than a
                                             // possibly-wrong unfavourited state.

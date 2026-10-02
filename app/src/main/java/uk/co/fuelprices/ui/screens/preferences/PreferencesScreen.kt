@@ -42,7 +42,7 @@ fun PreferencesScreen(
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text("Delete account?") },
-            text = { Text("This permanently deletes your account, favourites, and alerts. This can't be undone.") },
+            text = { Text("This permanently deletes your account, favourites, alerts and station ratings. This can't be undone.") },
             confirmButton = {
                 TextButton(
                     onClick = {
