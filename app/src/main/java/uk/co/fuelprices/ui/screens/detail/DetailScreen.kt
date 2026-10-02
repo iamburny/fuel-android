@@ -39,6 +39,8 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import java.time.DayOfWeek
 import java.time.LocalDate
 
@@ -72,10 +74,22 @@ fun DetailScreen(
     // round backing, which reads over any map tile where a fade alone can't.
     val fade = Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.18f), Color.Transparent))
     val barIconColor = MaterialTheme.colorScheme.onSurface
-    val backing = if (overMap) {
-        Modifier.padding(4.dp).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), CircleShape)
-    } else {
-        Modifier
+    // Always the same padding and shape, so the buttons don't move: only the backing's opacity
+    // changes as the bar turns solid.
+    val backingAlpha by animateFloatAsState(if (overMap) 0.92f else 0f, label = "detailBackingAlpha")
+    val backing = Modifier
+        .padding(4.dp)
+        .background(MaterialTheme.colorScheme.surface.copy(alpha = backingAlpha), CircleShape)
+
+    LaunchedEffect(state.signInRequested) {
+        if (state.signInRequested) {
+            viewModel.consumeSignInRequest()
+            onSignIn()
+        }
+    }
+    LifecycleResumeEffect(Unit) {
+        viewModel.onResumed()
+        onPauseOrDispose {}
     }
 
     Scaffold(
@@ -99,7 +113,7 @@ fun DetailScreen(
                         RatingBadgeButton(
                             summary = state.station?.ratingSummary,
                             contentColor = barIconColor,
-                            floating = overMap,
+                            backing = backing,
                             onClick = { ratingsViewModel.onRateClicked() },
                         )
                     }
@@ -118,6 +132,7 @@ fun DetailScreen(
                     IconButton(
                         onClick = { viewModel.toggleFavourite() },
                         modifier = backing,
+                        // Signed out, this routes to sign-in and saves the favourite on return.
                         // Also gated on !isLoading: selectedFuelType is null until load()
                         // completes, so a favourite tapped before then would fall back to the
                         // "E10" default in toggleFavourite() rather than the real active filter.
@@ -526,7 +541,7 @@ private fun OpeningHoursTable(days: UsualDaysDto) {
 private fun RatingBadgeButton(
     summary: RatingSummaryDto?,
     contentColor: Color,
-    floating: Boolean,
+    backing: Modifier,
     onClick: () -> Unit,
 ) {
     val label = if (summary != null) {
@@ -539,13 +554,7 @@ private fun RatingBadgeButton(
         contentPadding = PaddingValues(horizontal = 8.dp),
         // widthIn replaces TextButton's own wider minimum, so the outlined star sits like the icons.
         modifier = Modifier
-            .then(
-                if (floating) {
-                    Modifier.padding(4.dp).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), CircleShape)
-                } else {
-                    Modifier
-                },
-            )
+            .then(backing)
             .widthIn(min = 48.dp)
             .semantics(mergeDescendants = true) { contentDescription = label },
     ) {
