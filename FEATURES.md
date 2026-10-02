@@ -87,7 +87,8 @@ National fuel-price statistics and historical trends.
   Tapping a card selects that fuel type and reloads the trend chart.
 - **"Price Trend"**: a **7d / 30d / 90d** range selector (default 30) and a line chart of average
   price over time, coloured by fuel type, with start/end dates and a "Range: X.Xp – Y.Yp" label.
-- **"Report a price discrepancy"** button → opens the Gov Fuel Finder site in a browser.
+- **"Report a price discrepancy"** button → opens GOV.UK's "Report an error in fuel prices or
+  forecourt details" guidance page in a browser.
 - Data-source / Open Government Licence compliance notice.
 - **Requires connectivity** — national stats and trends are never cached.
 
