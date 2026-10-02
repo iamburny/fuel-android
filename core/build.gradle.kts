@@ -54,6 +54,15 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    testOptions {
+        unitTests {
+            // The data layer under test is plain Kotlin, but the classes it sits alongside pull in
+            // android.* stubs on the unit-test classpath; returning defaults instead of throwing
+            // keeps those incidental references from failing an otherwise pure-JVM test.
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {
@@ -109,4 +118,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("io.mockk:mockk:1.13.13")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    // Asserts the shape of the outgoing request: an absent lat/lng must be absent from the URL
+    // rather than serialised as 0, which mocking the Retrofit interface couldn't prove.
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }

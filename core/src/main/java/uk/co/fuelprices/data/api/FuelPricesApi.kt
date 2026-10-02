@@ -27,10 +27,24 @@ interface FuelPricesApi {
     @GET("api/stations/{id}")
     suspend fun getStation(@Path("id") stationId: Int): StationDto
 
+    /**
+     * Text search over station name/postcode/brand/town. Results come back ranked by relevance
+     * (exact name or postcode match → name prefix → everything else).
+     *
+     * [lat]/[lng] are optional: when both are supplied, distance becomes the final tie-break
+     * *within* a relevance tier and each station carries a `distance_miles`, exactly as
+     * `/api/stations/nearby` does. They must be genuinely absent from the request when there's no
+     * GPS fix — never sent as 0, which the backend would read as a real position in the Gulf of
+     * Guinea. Retrofit drops null `@Query` values from the URL entirely
+     * (`ParameterHandler.Query.apply` returns early on null), so a boxed nullable `Double?` is the
+     * mechanism here; a non-null `Double` with a default would be serialised as `0.0`.
+     */
     @GET("api/stations/search/")
     suspend fun searchStations(
         @Query("q") query: String,
         @Query("limit") limit: Int = 20,
+        @Query("lat") lat: Double? = null,
+        @Query("lng") lng: Double? = null,
     ): StationListResponse
 
     // ── Prices ───────────────────────────────────────────
