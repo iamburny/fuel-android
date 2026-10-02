@@ -28,6 +28,11 @@ import uk.co.fuelprices.ui.components.FuelMapView
 import uk.co.fuelprices.ui.components.MapMarker
 import uk.co.fuelprices.ui.theme.fuelColor
 import uk.co.fuelprices.ui.theme.fuelLabel
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import uk.co.fuelprices.data.api.RatingSummaryDto
+import uk.co.fuelprices.ui.components.AccuracyWarningAmber
+import java.util.Locale
 import java.time.DayOfWeek
 import java.time.LocalDate
 
@@ -37,8 +42,11 @@ fun DetailScreen(
     onBack: () -> Unit,
     onSignIn: () -> Unit,
     viewModel: DetailViewModel = hiltViewModel(),
+    // The same instance StationRatingsSection resolves: both are scoped to this nav entry.
+    ratingsViewModel: StationRatingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val ratingsState by ratingsViewModel.state.collectAsState()
     val context = LocalContext.current
 
     Scaffold(
@@ -51,6 +59,12 @@ fun DetailScreen(
                     }
                 },
                 actions = {
+                    if (ratingsState.enabled && state.station != null) {
+                        RatingBadgeButton(
+                            summary = state.station?.ratingSummary,
+                            onClick = { ratingsViewModel.onRateClicked() },
+                        )
+                    }
                     if (state.isFavourite) {
                         IconButton(
                             onClick = { viewModel.toggleNotify() },
@@ -352,7 +366,7 @@ fun DetailScreen(
 
             // Driver ratings sit in their own section after all the Fuel Finder data, so they're
             // never read as part of the published prices.
-            StationRatingsSection(station = station, onSignIn = onSignIn)
+            StationRatingsSection(station = station, onSignIn = onSignIn, viewModel = ratingsViewModel)
 
             // Compliance: discrepancy report link (required by Fair Use Policy) plus a real,
             // tappable link to the official gov.uk source (required by the Misleading Claims
@@ -442,6 +456,38 @@ private fun OpeningHoursTable(days: UsualDaysDto) {
                     textAlign = TextAlign.End,
                 )
             }
+        }
+    }
+}
+
+/**
+ * The station's driver score beside the favourite heart, and the quickest way to rate it: the
+ * average with a filled star once enough drivers have rated it, an outlined star until then.
+ */
+@Composable
+private fun RatingBadgeButton(summary: RatingSummaryDto?, onClick: () -> Unit) {
+    val label = if (summary != null) {
+        String.format(Locale.UK, "Rated %.1f out of 5 by %d drivers. Rate this station", summary.avgStars, summary.raterCount)
+    } else {
+        "Rate this station"
+    }
+    TextButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 8.dp),
+        modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = label },
+    ) {
+        Icon(
+            if (summary != null) Icons.Default.Star else Icons.Default.StarBorder,
+            contentDescription = null,
+            tint = if (summary != null) AccuracyWarningAmber else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (summary != null) {
+            Spacer(Modifier.width(4.dp))
+            Text(
+                String.format(Locale.UK, "%.1f", summary.avgStars),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
         }
     }
 }
