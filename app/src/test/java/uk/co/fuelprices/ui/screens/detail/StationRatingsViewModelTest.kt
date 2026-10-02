@@ -262,9 +262,55 @@ class StationRatingsViewModelTest {
         advanceUntilIdle()
 
         coVerify {
-            repo.createRating(1, match { it.fuelType == "E10" && it.priceMatched && it.reportedPricePence == null && it.comment == null })
+            repo.createRating(1, match { it.fuelType == "E10" && it.priceMatched == true && it.reportedPricePence == null && it.comment == null })
         }
         verify { analytics.trackEvent("submit_rating", any()) }
+    }
+
+    @Test
+    fun `choosing no fuel skips the price check and sends nulls`() = runTest(mainDispatcherRule.dispatcher) {
+        val vm = buildViewModel()
+        advanceUntilIdle()
+        coEvery { repo.createRating(1, any()) } returns RatingSavedResponse(rating = ownRating(commentStatus = "none"))
+
+        vm.onRateClicked()
+        vm.setPriceMatched(false)
+        vm.setPaidText("151.9")
+        vm.setFuelType(null)
+        vm.setStars(3)
+        assertNull(vm.state.value.sheet!!.form.priceMatched)
+        assertTrue(vm.canSubmit())
+        vm.submit()
+        advanceUntilIdle()
+
+        coVerify {
+            repo.createRating(1, match { it.fuelType == null && it.priceMatched == null && it.reportedPricePence == null })
+        }
+    }
+
+    @Test
+    fun `a station listing no prices can still be rated without fuel`() = runTest(mainDispatcherRule.dispatcher) {
+        val vm = buildViewModel()
+        vm.setStationFuelTypes(emptyList())
+        advanceUntilIdle()
+
+        vm.onRateClicked()
+        assertNull(vm.state.value.sheet!!.form.fuelType)
+        assertFalse(vm.canSubmit())
+        vm.setStars(4)
+        assertTrue(vm.canSubmit())
+    }
+
+    @Test
+    fun `an edited rating made without fuel reopens with no fuel chosen`() = runTest(mainDispatcherRule.dispatcher) {
+        val noFuel = ownRating().copy(fuelType = null, priceMatched = null, reportedPricePence = null)
+        val vm = buildViewModel(mine = MyRatingResponse(rating = noFuel, termsVersion = "1"))
+        advanceUntilIdle()
+
+        vm.onRateClicked()
+        val form = vm.state.value.sheet!!.form
+        assertNull(form.fuelType)
+        assertNull(form.priceMatched)
     }
 
     @Test

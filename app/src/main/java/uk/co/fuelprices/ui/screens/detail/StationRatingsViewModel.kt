@@ -24,6 +24,7 @@ import javax.inject.Inject
 
 data class RateFormState(
     val fuelTypes: List<String> = emptyList(),
+    // Null means the driver didn't buy fuel, which leaves no price to check.
     val fuelType: String? = null,
     val priceMatched: Boolean? = null,
     val paidText: String = "",
@@ -272,14 +273,14 @@ class StationRatingsViewModel @Inject constructor(
         val existing = mine?.rating?.takeIf { isEditable(it) }
         val fuels = stationFuelTypes
         val fuel = when {
-            existing != null && existing.fuelType in fuels -> existing.fuelType
+            existing != null -> existing.fuelType?.takeIf { it in fuels }
             preferredFuelType != null && preferredFuelType in fuels -> preferredFuelType
             else -> fuels.firstOrNull()
         }
         return RateFormState(
             fuelTypes = fuels,
             fuelType = fuel,
-            priceMatched = existing?.priceMatched,
+            priceMatched = existing?.priceMatched?.takeIf { fuel != null },
             paidText = existing?.reportedPricePence?.let(::formatPence) ?: "",
             stars = existing?.stars,
             comment = existing?.comment ?: "",
@@ -293,7 +294,9 @@ class StationRatingsViewModel @Inject constructor(
         }
     }
 
-    fun setFuelType(fuelType: String) = editForm { it.copy(fuelType = fuelType) }
+    fun setFuelType(fuelType: String?) = editForm {
+        if (fuelType == null) it.copy(fuelType = null, priceMatched = null) else it.copy(fuelType = fuelType)
+    }
     fun setPriceMatched(matched: Boolean) = editForm { it.copy(priceMatched = matched) }
     fun setPaidText(text: String) = editForm { it.copy(paidText = text.filter { c -> c.isDigit() || c == '.' }.take(6)) }
     fun setStars(stars: Int) = editForm { it.copy(stars = stars.coerceIn(1, 5)) }
@@ -305,8 +308,8 @@ class StationRatingsViewModel @Inject constructor(
         val sheet = s.sheet ?: return false
         val mode = s.sheetMode as? RateSheetMode.Form ?: return false
         val f = sheet.form
-        return !sheet.submitting && f.fuelTypes.isNotEmpty() && f.fuelType != null &&
-            f.priceMatched != null && f.stars != null && f.paidValid &&
+        return !sheet.submitting && (f.fuelType == null || f.priceMatched != null) &&
+            f.stars != null && f.paidValid &&
             (!mode.needsTerms || f.termsAccepted)
     }
 
@@ -315,11 +318,11 @@ class StationRatingsViewModel @Inject constructor(
         val s = _state.value
         val mode = s.sheetMode as RateSheetMode.Form
         val f = s.sheet!!.form
-        val matched = f.priceMatched!!
+        val matched = f.priceMatched.takeIf { f.fuelType != null }
         val input = RatingInputRequest(
-            fuelType = f.fuelType!!,
+            fuelType = f.fuelType,
             priceMatched = matched,
-            reportedPricePence = if (matched) null else f.paidValue,
+            reportedPricePence = if (matched == false) f.paidValue else null,
             stars = f.stars!!,
             comment = f.comment.trim().ifEmpty { null },
         )
@@ -339,12 +342,13 @@ class StationRatingsViewModel @Inject constructor(
                 } else {
                     analytics.trackEvent(
                         if (existing != null) "edit_rating" else "submit_rating",
-                        mapOf(
-                            "station_id" to stationId,
-                            "price_matched" to matched,
-                            "stars" to input.stars,
-                            "has_comment" to (input.comment != null),
-                        ),
+                        buildMap<String, Any> {
+                            put("station_id", stationId)
+                            put("bought_fuel", input.fuelType != null)
+                            matched?.let { put("price_matched", it) }
+                            put("stars", input.stars)
+                            put("has_comment", input.comment != null)
+                        },
                     )
                     onSaved(saved)
                 }

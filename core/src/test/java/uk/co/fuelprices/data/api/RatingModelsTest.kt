@@ -108,6 +108,32 @@ class RatingModelsTest {
     }
 
     @Test
+    fun `a rating without fuel decodes with no fuel and no price check, not a match`() {
+        val page = json.decodeFromString<PublicRatingsResponse>(
+            """{"items": [{"id": 1, "stars": 4, "price_matched": null, "fuel_type": null, "author_ref": "r_abc"}]}""",
+        )
+        assertNull(page.items.single().priceMatched)
+        assertNull(page.items.single().fuelType)
+
+        val summary = json.decodeFromString<RatingSummaryDto>(
+            """{"rater_count": 3, "avg_stars": 4.0, "price_check_count": 0, "price_match_pct": null, "avg_gap_pence": null}""",
+        )
+        assertEquals(0, summary.priceCheckCount)
+        assertNull(summary.priceMatchPct)
+    }
+
+    @Test
+    fun `a rating without fuel sends both fuel and price check as explicit nulls`() {
+        val encoded = json.encodeToJsonElement(
+            RatingInputRequest.serializer(),
+            RatingInputRequest(fuelType = null, priceMatched = null, reportedPricePence = null, stars = 3, comment = null),
+        ).jsonObject
+
+        assertEquals(JsonNull, encoded["fuel_type"])
+        assertEquals(JsonNull, encoded["price_matched"])
+    }
+
+    @Test
     fun `a cooldown error body carries the stored rating`() {
         val body = json.decodeFromString<RatingErrorBody>(
             """

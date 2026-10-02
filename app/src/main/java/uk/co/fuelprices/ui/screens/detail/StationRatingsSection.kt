@@ -1,5 +1,6 @@
 package uk.co.fuelprices.ui.screens.detail
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -48,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -201,7 +204,14 @@ private fun RatingSummaryCard(summary: RatingSummaryDto) {
                 figureDescription = "%.1f out of 5 stars".format(summary.avgStars),
                 caption = "Average from ${summary.raterCount} driver${if (summary.raterCount == 1) "" else "s"}",
             )
-            SummaryFigure(figure = "${summary.priceMatchPct}%", caption = "found the pump price matched")
+            summary.priceMatchPct?.let { pct ->
+                SummaryFigure(
+                    figure = "$pct%",
+                    caption = if (summary.priceCheckCount < summary.raterCount) {
+                        "of the ${summary.priceCheckCount} who bought fuel found the pump price matched"
+                    } else "found the pump price matched",
+                )
+            }
             val gap = summary.avgGapPence
             if (gap != null && gap != 0.0) {
                 SummaryFigure(
@@ -252,22 +262,26 @@ private fun RatingItem(
                         .align(Alignment.CenterVertically)
                         .clearAndSetSemantics { contentDescription = "${rating.stars} out of 5 stars" },
                 )
-                Text(
-                    fuelLabel(rating.fuelType),
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.align(Alignment.CenterVertically),
-                )
-                val tint = if (rating.priceMatched) MatchGreen else AccuracyWarningAmber
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = tint.copy(alpha = 0.15f),
-                    modifier = Modifier.align(Alignment.CenterVertically),
-                ) {
+                rating.fuelType?.let { fuel ->
                     Text(
-                        priceMatchLabel(rating.priceMatched, rating.gapPence),
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        fuelLabel(fuel),
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.align(Alignment.CenterVertically),
                     )
+                }
+                rating.priceMatched?.let { matched ->
+                    val tint = if (matched) MatchGreen else AccuracyWarningAmber
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = tint.copy(alpha = 0.15f),
+                        modifier = Modifier.align(Alignment.CenterVertically),
+                    ) {
+                        Text(
+                            priceMatchLabel(matched, rating.gapPence),
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        )
+                    }
                 }
             }
             Text(
@@ -427,42 +441,42 @@ private fun VerifyEmailPanel(sheet: RateSheetUiState, viewModel: StationRatingsV
 @Composable
 private fun RatingForm(sheet: RateSheetUiState, mode: RateSheetMode.Form, viewModel: StationRatingsViewModel) {
     val form = sheet.form
-    if (form.fuelTypes.isEmpty()) {
-        Text("This station isn't listing any prices at the moment, so there's nothing to compare against.")
-        SheetActions(onClose = { viewModel.closeSheet() })
-        return
-    }
+    // Without fuel there was no pump price to check, so that question doesn't apply.
+    val checksPrice = form.fuelType != null
 
-    if (form.fuelTypes.size > 1) {
-        Text("Which fuel did you buy?", style = MaterialTheme.typography.labelLarge)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            form.fuelTypes.forEach { type ->
-                FilterChip(
-                    selected = form.fuelType == type,
-                    onClick = { viewModel.setFuelType(type) },
-                    label = { Text(fuelLabel(type)) },
-                )
-            }
+    Text("Which fuel did you buy?", style = MaterialTheme.typography.labelLarge)
+    FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        form.fuelTypes.forEach { type ->
+            FilterChip(
+                selected = form.fuelType == type,
+                onClick = { viewModel.setFuelType(type) },
+                label = { Text(fuelLabel(type)) },
+            )
         }
-    } else {
-        Text("Fuel: ${fuelLabel(form.fuelType ?: form.fuelTypes.first())}", style = MaterialTheme.typography.bodyMedium)
-    }
-
-    Text("Did the pump price match the price shown?", style = MaterialTheme.typography.labelLarge)
-    Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         FilterChip(
-            selected = form.priceMatched == true,
-            onClick = { viewModel.setPriceMatched(true) },
-            label = { Text("Yes, it matched") },
-        )
-        FilterChip(
-            selected = form.priceMatched == false,
-            onClick = { viewModel.setPriceMatched(false) },
-            label = { Text("No, it was different") },
+            selected = !checksPrice,
+            onClick = { viewModel.setFuelType(null) },
+            label = { Text("None — I didn't buy fuel") },
         )
     }
 
-    if (form.priceMatched == false) {
+    if (checksPrice) {
+        Text("Did the pump price match the price shown?", style = MaterialTheme.typography.labelLarge)
+        Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = form.priceMatched == true,
+                onClick = { viewModel.setPriceMatched(true) },
+                label = { Text("Yes, it matched") },
+            )
+            FilterChip(
+                selected = form.priceMatched == false,
+                onClick = { viewModel.setPriceMatched(false) },
+                label = { Text("No, it was different") },
+            )
+        }
+    }
+
+    if (checksPrice && form.priceMatched == false) {
         OutlinedTextField(
             value = form.paidText,
             onValueChange = { viewModel.setPaidText(it) },
@@ -514,8 +528,21 @@ private fun RatingForm(sheet: RateSheetUiState, mode: RateSheetMode.Form, viewMo
     )
 
     if (mode.needsTerms) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = form.termsAccepted, onCheckedChange = { viewModel.setTermsAccepted(it) })
+        // The whole row toggles, so the target isn't just the checkbox itself.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                .toggleable(
+                    value = form.termsAccepted,
+                    role = Role.Checkbox,
+                    onValueChange = { viewModel.setTermsAccepted(it) },
+                )
+                .padding(end = 12.dp, top = 4.dp, bottom = 4.dp),
+        ) {
+            Checkbox(checked = form.termsAccepted, onCheckedChange = null, modifier = Modifier.padding(12.dp))
             Text(
                 buildAnnotatedString {
                     append("I agree to the ")

@@ -12,7 +12,10 @@ import kotlinx.serialization.Serializable
 data class RatingSummaryDto(
     @SerialName("rater_count") val raterCount: Int = 0,
     @SerialName("avg_stars") val avgStars: Double = 0.0,
-    @SerialName("price_match_pct") val priceMatchPct: Int = 0,
+    // Raters who checked a price; a driver who didn't buy fuel rates without one.
+    @SerialName("price_check_count") val priceCheckCount: Int = 0,
+    // Share of those checks where the pump matched, 0–100; null when nobody checked a price.
+    @SerialName("price_match_pct") val priceMatchPct: Int? = null,
     // Mean of (price paid − price published) over mismatch reports that gave a price: positive
     // means drivers paid more than listed.
     @SerialName("avg_gap_pence") val avgGapPence: Double? = null,
@@ -24,8 +27,9 @@ data class RatingSummaryDto(
 data class PublicRatingDto(
     val id: Int,
     val stars: Int = 0,
-    @SerialName("price_matched") val priceMatched: Boolean = true,
-    @SerialName("fuel_type") val fuelType: String = "",
+    // Both null when the driver didn't buy fuel, and so made no price check.
+    @SerialName("price_matched") val priceMatched: Boolean? = null,
+    @SerialName("fuel_type") val fuelType: String? = null,
     @SerialName("gap_pence") val gapPence: Double? = null,
     val comment: String? = null,
     @SerialName("created_at") val createdAt: String = "",
@@ -47,8 +51,8 @@ data class OwnRatingDto(
     val id: Int,
     @SerialName("station_id") val stationId: Int = 0,
     val stars: Int = 0,
-    @SerialName("price_matched") val priceMatched: Boolean = true,
-    @SerialName("fuel_type") val fuelType: String = "",
+    @SerialName("price_matched") val priceMatched: Boolean? = null,
+    @SerialName("fuel_type") val fuelType: String? = null,
     @SerialName("reported_price_pence") val reportedPricePence: Double? = null,
     @SerialName("published_price_pence") val publishedPricePence: Double? = null,
     @SerialName("gap_pence") val gapPence: Double? = null,
@@ -72,11 +76,12 @@ data class MyRatingResponse(
     @SerialName("terms_version") val termsVersion: String = "",
 )
 
-/** Body for both creating and editing a rating. Every field is always sent, nulls included. */
+/** Body for both creating and editing a rating. Every field is always sent, nulls included.
+ *  A driver who didn't buy fuel sends a null [fuelType], and then [priceMatched] is null too. */
 @Serializable
 data class RatingInputRequest(
-    @SerialName("fuel_type") val fuelType: String,
-    @SerialName("price_matched") val priceMatched: Boolean,
+    @SerialName("fuel_type") val fuelType: String?,
+    @SerialName("price_matched") val priceMatched: Boolean?,
     @SerialName("reported_price_pence") val reportedPricePence: Double?,
     val stars: Int,
     val comment: String?,
