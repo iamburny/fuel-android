@@ -33,6 +33,8 @@ import androidx.compose.ui.semantics.semantics
 import uk.co.fuelprices.data.api.RatingSummaryDto
 import uk.co.fuelprices.ui.components.AccuracyWarningAmber
 import java.util.Locale
+import androidx.compose.ui.text.style.TextOverflow
+import uk.co.fuelprices.ui.theme.LocalIsDarkTheme
 import java.time.DayOfWeek
 import java.time.LocalDate
 
@@ -52,7 +54,9 @@ fun DetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(state.station?.name ?: "Station") },
+                // One line: with the star, bell and heart a long forecourt name would otherwise wrap
+                // and clip inside the bar.
+                title = { Text(state.station?.name ?: "Station", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
@@ -474,12 +478,20 @@ private fun RatingBadgeButton(summary: RatingSummaryDto?, onClick: () -> Unit) {
     TextButton(
         onClick = onClick,
         contentPadding = PaddingValues(horizontal = 8.dp),
-        modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = label },
+        // widthIn replaces TextButton's own wider minimum, so the outlined star sits like the icons.
+        modifier = Modifier
+            .widthIn(min = 48.dp)
+            .semantics(mergeDescendants = true) { contentDescription = label },
     ) {
         Icon(
             if (summary != null) Icons.Default.Star else Icons.Default.StarBorder,
             contentDescription = null,
-            tint = if (summary != null) AccuracyWarningAmber else MaterialTheme.colorScheme.onSurfaceVariant,
+            // A darker amber on light bars, where the warning amber is too faint for an icon.
+            tint = when {
+                summary == null -> MaterialTheme.colorScheme.onSurfaceVariant
+                LocalIsDarkTheme.current -> AccuracyWarningAmber
+                else -> Color(0xFFB45309)
+            },
         )
         if (summary != null) {
             Spacer(Modifier.width(4.dp))
