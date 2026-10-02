@@ -237,6 +237,17 @@ class FuelRepository @Inject constructor(
 
     suspend fun logout() = tokenStore.clear()
 
+    /** Permanently deletes the account on the server, then signs out locally. Favourites and
+     *  alerts live only on the server, so nothing else on the device needs clearing. */
+    suspend fun deleteAccount() {
+        ratingCall { api.deleteAccount() }
+        tokenStore.clear()
+    }
+
+    suspend fun requestEmailVerification(): VerifyEmailResponse = ratingCall { api.requestEmailVerification() }
+
+    suspend fun acceptTerms(version: String) = ratingCall { api.acceptTerms(AcceptTermsRequest(version)) }
+
     suspend fun isLoggedIn() = tokenStore.isLoggedIn()
 
     /** The signed-in user's email for display (null when logged out). */
@@ -270,6 +281,38 @@ class FuelRepository @Inject constructor(
     ) = api.addAlert(AlertCreateRequest(latitude, longitude, radiusMiles, fuelType, label))
 
     suspend fun removeAlert(id: Int) = api.removeAlert(id)
+
+    // ── Station ratings ──────────────────────────────────
+    // Network-only: ratings are per-user and moderated, so there's no offline cache to fall back
+    // to. HTTP failures surface as RatingException.
+
+    suspend fun getStationRatings(stationId: Int, page: Int = 1): PublicRatingsResponse =
+        ratingCall { api.getStationRatings(stationId, page) }
+
+    suspend fun getMyRating(stationId: Int): MyRatingResponse = ratingCall { api.getMyRating(stationId) }
+
+    suspend fun createRating(stationId: Int, input: RatingInputRequest): RatingSavedResponse =
+        ratingCall { api.createRating(stationId, input) }
+
+    suspend fun updateRating(ratingId: Int, input: RatingInputRequest): RatingSavedResponse =
+        ratingCall { api.updateRating(ratingId, input) }
+
+    suspend fun reportRating(ratingId: Int, reason: String?) =
+        ratingCall { api.reportRating(ratingId, ReportRatingRequest(reason)) }
+
+    /** Hides every comment by this rating's author, for this user only; returns their author_ref. */
+    suspend fun blockRatingAuthor(ratingId: Int): String = ratingCall { api.blockRatingAuthor(ratingId).authorRef }
+
+    suspend fun getBlockedReviewers(): Set<String> = ratingCall { api.getBlockedReviewers().authorRefs.toSet() }
+
+    suspend fun unblockReviewer(authorRef: String) = ratingCall { api.unblockReviewer(authorRef) }
+
+    private inline fun <T> ratingCall(block: () -> T): T =
+        try {
+            block()
+        } catch (e: retrofit2.HttpException) {
+            throw RatingException.from(e)
+        }
 
     // ── Discrepancy ──────────────────────────────────────
 
@@ -305,6 +348,7 @@ class FuelRepository @Inject constructor(
                 isMotorway = it.isMotorway, isSupermarket = it.isSupermarket,
                 amenitiesJson = it.amenities?.let { a -> json.encodeToString(JsonElement.serializer(), a) },
                 openingHoursJson = it.openingHours?.let { oh -> json.encodeToString(OpeningHoursDto.serializer(), oh) },
+                priceAccuracyWarning = it.priceAccuracyWarning,
                 lastFetchedAt = now,
             )
         })
@@ -342,5 +386,6 @@ class FuelRepository @Inject constructor(
         prices = prices.map {
             PriceDto(fuelType = it.fuelType, pricePence = it.pricePence, reportedAt = it.reportedAt, warning = it.warning)
         },
+        priceAccuracyWarning = station.priceAccuracyWarning,
     )
 }

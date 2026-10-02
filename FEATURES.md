@@ -51,7 +51,10 @@ Find fuel stations near you on a live map, with a searchable/filterable list.
   "my location" blue dot is only enabled when location permission is actually granted (enabling it
   without the permission crashes the app).
 - **Station pins** coloured per the selected fuel type, each labelled with the cheapest price of
-  that fuel type at the station (e.g. "129.9p") or "No price."
+  that fuel type at the station (e.g. "129.9p") or "No price." With driver ratings switched on, a
+  station whose raters often found the pump price didn't match gets an amber "!" badge on its pin
+  and a "Drivers report price differences" chip on its list row; neither affects sorting,
+  filtering or the price shown.
 - **Fuel-type pill** (top-right) always shows the current fuel type; tap to cycle through all six.
 - **Drag to explore:** panning the map loads stations for the newly visible viewport — both the
   map pins *and* the list below update to the dragged-to area (no network call for the list; it's
@@ -131,6 +134,15 @@ Everything about one station, plus favouriting, directions, and history.
 - **Opening Hours** table for the seven weekdays (today's row highlighted/bold), plus a bank
   holidays sub-list when available.
 - **Price History (30 days):** a bar chart with the date range and a "X.Xp – Y.Yp" label.
+- **Driver reports** (flag `shared.station-ratings`, default off): a separate section, labelled as
+  not Fuel Finder data. Shows the average stars, the share of drivers who found the pump price
+  matched, and the average gap when it didn't (once three drivers have rated), then moderated
+  comments 20 at a time with **Report** and **Hide comments from this reviewer**. **Rate this
+  station** opens a bottom sheet: fuel, did the price match, what you paid (optional), 1–5 stars, a
+  280-character comment. It first resolves whatever stops the user rating — sign-in (returns to
+  Detail), the 7-day cooldown, email verification (link opens the website), a new or suspended
+  account, the daily cap, or accepting the reviews content policy (a checkbox in the form). A
+  rating stays editable for 24 hours, up to three times.
 - Discrepancy-report button + compliance notice.
 - Favourite toggling, history, averages, and drive-cost are all best-effort (fail silently).
 
@@ -143,6 +155,7 @@ confirmation appears).
 - **Long fuel names** toggle — show "Unleaded (E10)" instead of "E10" everywhere.
 - **Your car** — **Average MPG** and **Tank capacity (litres)** fields. These unlock the drive-cost
   estimate (phone Detail) and the net-savings sorting (car app).
+- **Delete account** (signed in) — confirms, then calls `DELETE /api/auth/me` and signs out.
 
 ---
 
@@ -235,7 +248,8 @@ remove), and discrepancy reporting.
 ### Accounts
 
 - Email/password **login and registration**; the JWT is stored via DataStore. Registration does
-  not auto-login. Sign-in is required only for **Favourites**.
+  not auto-login. Sign-in is required only for **Favourites** and for rating, reporting or hiding
+  station reviews.
 
 ### Price-drop alerts
 

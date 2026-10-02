@@ -35,6 +35,7 @@ import java.time.LocalDate
 @Composable
 fun DetailScreen(
     onBack: () -> Unit,
+    onSignIn: () -> Unit,
     viewModel: DetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -348,6 +349,10 @@ fun DetailScreen(
             }
 
             HorizontalDivider()
+
+            // Driver ratings sit in their own section after all the Fuel Finder data, so they're
+            // never read as part of the published prices.
+            StationRatingsSection(station = station, onSignIn = onSignIn)
 
             // Compliance: discrepancy report link (required by Fair Use Policy) plus a real,
             // tappable link to the official gov.uk source (required by the Misleading Claims

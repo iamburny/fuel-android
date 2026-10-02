@@ -137,6 +137,10 @@ data class StationDto(
     @SerialName("opening_hours") val openingHours: OpeningHoursDto? = null,
     @SerialName("distance_miles") val distanceMiles: Double? = null,
     val prices: List<PriceDto> = emptyList(),
+    // Driver-reported, not Fuel Finder data. Only `GET /api/stations/{id}` carries the summary;
+    // the list endpoints carry just the warning flag.
+    @SerialName("rating_summary") val ratingSummary: RatingSummaryDto? = null,
+    @SerialName("price_accuracy_warning") val priceAccuracyWarning: Boolean = false,
 )
 
 @Serializable

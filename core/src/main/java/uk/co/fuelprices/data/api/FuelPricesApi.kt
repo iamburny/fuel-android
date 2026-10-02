@@ -102,6 +102,17 @@ interface FuelPricesApi {
     @PUT("api/auth/preferences")
     suspend fun updatePreferences(@Body body: PreferencesDto): PreferencesDto
 
+    // Permanently deletes the signed-in account and everything attached to it.
+    @DELETE("api/auth/me")
+    suspend fun deleteAccount()
+
+    // The emailed link opens the website, which completes verification; the app never handles it.
+    @POST("api/auth/verify-email/request")
+    suspend fun requestEmailVerification(): VerifyEmailResponse
+
+    @POST("api/auth/accept-terms")
+    suspend fun acceptTerms(@Body body: AcceptTermsRequest)
+
     // ── Favourites ───────────────────────────────────────
 
     @GET("api/favourites/")
@@ -129,6 +140,33 @@ interface FuelPricesApi {
 
     @DELETE("api/alerts/{id}")
     suspend fun removeAlert(@Path("id") id: Int)
+
+    // ── Station ratings ──────────────────────────────────
+    // Every route answers 404 while the shared.station-ratings flag is off server-side.
+
+    @GET("api/stations/{id}/ratings")
+    suspend fun getStationRatings(@Path("id") stationId: Int, @Query("page") page: Int = 1): PublicRatingsResponse
+
+    @GET("api/ratings/mine")
+    suspend fun getMyRating(@Query("station_id") stationId: Int): MyRatingResponse
+
+    @POST("api/stations/{id}/ratings")
+    suspend fun createRating(@Path("id") stationId: Int, @Body body: RatingInputRequest): RatingSavedResponse
+
+    @PATCH("api/ratings/{id}")
+    suspend fun updateRating(@Path("id") ratingId: Int, @Body body: RatingInputRequest): RatingSavedResponse
+
+    @POST("api/ratings/{id}/report")
+    suspend fun reportRating(@Path("id") ratingId: Int, @Body body: ReportRatingRequest)
+
+    @POST("api/ratings/{id}/block-author")
+    suspend fun blockRatingAuthor(@Path("id") ratingId: Int): BlockAuthorResponse
+
+    @GET("api/ratings/blocked")
+    suspend fun getBlockedReviewers(): BlockedReviewersResponse
+
+    @DELETE("api/ratings/blocked/{authorRef}")
+    suspend fun unblockReviewer(@Path("authorRef") authorRef: String)
 
     // ── Discrepancy ──────────────────────────────────────
 
