@@ -42,8 +42,8 @@ android {
         applicationId = "uk.fueltracker.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 11
-        versionName = "1.4"
+        versionCode = 12
+        versionName = "1.5"
 
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
