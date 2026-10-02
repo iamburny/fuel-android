@@ -257,15 +257,24 @@ fun DetailScreen(
                     }
                 }
 
-                // Directions button
+                // The station's two actions, side by side, wrapping on a narrow screen.
                 Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = {
-                    val uri = Uri.parse("google.navigation:q=${station.latitude},${station.longitude}")
-                    context.startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage("com.google.android.apps.maps"))
-                }) {
-                    Icon(Icons.Default.Directions, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Get directions")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        val uri = Uri.parse("google.navigation:q=${station.latitude},${station.longitude}")
+                        context.startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage("com.google.android.apps.maps"))
+                    }) {
+                        Icon(Icons.Default.Directions, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Get directions")
+                    }
+                    if (ratingsState.enabled) {
+                        OutlinedButton(onClick = { ratingsViewModel.onRateClicked() }) {
+                            Icon(Icons.Default.StarBorder, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (ratingsState.canEditOwn) "Edit your rating" else "Rate this station")
+                        }
+                    }
                 }
             }
 

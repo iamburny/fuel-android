@@ -126,10 +126,9 @@ fun StationRatingsSection(
             )
         }
 
+        // Rating itself starts from the button beside "Get directions"; this shows where the
+        // user's own rating stands.
         Spacer(Modifier.height(12.dp))
-        OutlinedButton(onClick = { viewModel.onRateClicked() }) {
-            Text(if (state.canEditOwn) "Edit your rating" else "Rate this station")
-        }
         ownRatingStatus(state.mine)?.let {
             Text(
                 it,
