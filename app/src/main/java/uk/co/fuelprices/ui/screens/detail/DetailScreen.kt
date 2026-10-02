@@ -35,8 +35,15 @@ import uk.co.fuelprices.data.api.RatingSummaryDto
 import uk.co.fuelprices.ui.components.AccuracyWarningAmber
 import java.util.Locale
 import uk.co.fuelprices.ui.theme.LocalIsDarkTheme
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.shape.CircleShape
 import java.time.DayOfWeek
 import java.time.LocalDate
+
+/** How much of the map shows below the floating top bar. */
+private val VISIBLE_MAP_HEIGHT = 220.dp
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -50,6 +57,26 @@ fun DetailScreen(
     val state by viewModel.state.collectAsState()
     val ratingsState by ratingsViewModel.state.collectAsState()
     val context = LocalContext.current
+    val scrollState = rememberScrollState()
+    val density = LocalDensity.current
+    // The bar floats over the map on a faint fade, and turns solid once the map has scrolled up
+    // under it, so its buttons never sit bare over the text below.
+    val overMap by remember {
+        derivedStateOf { scrollState.value < with(density) { VISIBLE_MAP_HEIGHT.toPx() } }
+    }
+    val barColor by animateColorAsState(
+        if (overMap) Color.Transparent else MaterialTheme.colorScheme.surface,
+        label = "detailBarColor",
+    )
+    // A very faint fade gives the floating bar some depth; legibility comes from each button's own
+    // round backing, which reads over any map tile where a fade alone can't.
+    val fade = Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.18f), Color.Transparent))
+    val barIconColor = MaterialTheme.colorScheme.onSurface
+    val backing = if (overMap) {
+        Modifier.padding(4.dp).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), CircleShape)
+    } else {
+        Modifier
+    }
 
     Scaffold(
         topBar = {
@@ -57,8 +84,13 @@ fun DetailScreen(
                 // No title: the bar has no room for a forecourt name beside its actions, so the name
                 // is the heading under the map instead.
                 title = {},
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = barColor,
+                    navigationIconContentColor = barIconColor,
+                    actionIconContentColor = barIconColor,
+                ),
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = onBack, modifier = backing) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
@@ -66,12 +98,15 @@ fun DetailScreen(
                     if (ratingsState.enabled && state.station != null) {
                         RatingBadgeButton(
                             summary = state.station?.ratingSummary,
+                            contentColor = barIconColor,
+                            floating = overMap,
                             onClick = { ratingsViewModel.onRateClicked() },
                         )
                     }
                     if (state.isFavourite) {
                         IconButton(
                             onClick = { viewModel.toggleNotify() },
+                            modifier = backing,
                             enabled = !state.pendingFavouriteToggle,
                         ) {
                             Icon(
@@ -82,6 +117,7 @@ fun DetailScreen(
                     }
                     IconButton(
                         onClick = { viewModel.toggleFavourite() },
+                        modifier = backing,
                         // Also gated on !isLoading: selectedFuelType is null until load()
                         // completes, so a favourite tapped before then would fall back to the
                         // "E10" default in toggleFavourite() rather than the real active filter.
@@ -105,19 +141,31 @@ fun DetailScreen(
 
         val station = state.station ?: return@Scaffold
 
+        // No top padding: the map runs up behind the status bar and the floating top bar, and is
+        // taller by exactly the space they cover.
         Column(
             Modifier
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
+                .padding(bottom = padding.calculateBottomPadding())
+                .verticalScroll(scrollState)
         ) {
             // Mini map
-            FuelMapView(
-                modifier = Modifier.fillMaxWidth().height(200.dp),
-                centerLat = station.latitude,
-                centerLng = station.longitude,
-                zoomLevel = 15f,
-                markers = listOf(MapMarker(station.latitude, station.longitude, station.name)),
-            )
+            Box {
+                FuelMapView(
+                    modifier = Modifier.fillMaxWidth().height(padding.calculateTopPadding() + VISIBLE_MAP_HEIGHT),
+                    centerLat = station.latitude,
+                    centerLng = station.longitude,
+                    zoomLevel = 15f,
+                    markers = listOf(MapMarker(station.latitude, station.longitude, station.name)),
+                )
+                // A faint fade behind the floating bar, so its buttons stay legible over busy map
+                // detail.
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(padding.calculateTopPadding() + 16.dp)
+                        .background(fade),
+                )
+            }
 
             // Station info
             Column(Modifier.padding(16.dp)) {
@@ -475,7 +523,12 @@ private fun OpeningHoursTable(days: UsualDaysDto) {
  * average with a filled star once enough drivers have rated it, an outlined star until then.
  */
 @Composable
-private fun RatingBadgeButton(summary: RatingSummaryDto?, onClick: () -> Unit) {
+private fun RatingBadgeButton(
+    summary: RatingSummaryDto?,
+    contentColor: Color,
+    floating: Boolean,
+    onClick: () -> Unit,
+) {
     val label = if (summary != null) {
         String.format(Locale.UK, "Rated %.1f out of 5 by %d drivers. Rate this station", summary.avgStars, summary.raterCount)
     } else {
@@ -486,6 +539,13 @@ private fun RatingBadgeButton(summary: RatingSummaryDto?, onClick: () -> Unit) {
         contentPadding = PaddingValues(horizontal = 8.dp),
         // widthIn replaces TextButton's own wider minimum, so the outlined star sits like the icons.
         modifier = Modifier
+            .then(
+                if (floating) {
+                    Modifier.padding(4.dp).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), CircleShape)
+                } else {
+                    Modifier
+                },
+            )
             .widthIn(min = 48.dp)
             .semantics(mergeDescendants = true) { contentDescription = label },
     ) {
@@ -494,7 +554,7 @@ private fun RatingBadgeButton(summary: RatingSummaryDto?, onClick: () -> Unit) {
             contentDescription = null,
             // A darker amber on light bars, where the warning amber is too faint for an icon.
             tint = when {
-                summary == null -> MaterialTheme.colorScheme.onSurfaceVariant
+                summary == null -> contentColor
                 LocalIsDarkTheme.current -> AccuracyWarningAmber
                 else -> Color(0xFFB45309)
             },
@@ -504,7 +564,7 @@ private fun RatingBadgeButton(summary: RatingSummaryDto?, onClick: () -> Unit) {
             Text(
                 String.format(Locale.UK, "%.1f", summary.avgStars),
                 style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = contentColor,
             )
         }
     }
