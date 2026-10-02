@@ -63,6 +63,18 @@ class FuelCostCalculatorTest {
         assertNull(estimateNetSavingsPounds(station, averages, prefs))
     }
 
+    @Test
+    fun `estimateNetSavingsPounds returns null when the preferred-fuel price is flagged`() {
+        val station = testStationDto(
+            distanceMiles = 1.0,
+            prices = listOf(testPriceDto("E10", 50.0, warning = "unusually_low")),
+        )
+        val averages = averagesFixture(e10 = 200.0, e5 = 90.0, b7Standard = 210.0)
+        val prefs = UserPreferences(fuelType = "E10", mpg = 60.0, tankCapacityLitres = 50.0)
+
+        assertNull(estimateNetSavingsPounds(station, averages, prefs))
+    }
+
     private fun averagesFixture(
         e10: Double,
         e5: Double,

@@ -1,5 +1,6 @@
 package uk.co.fuelprices.ui.screens.preferences
 
+import kotlinx.coroutines.CancellationException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import uk.co.fuelprices.data.api.PreferencesDto
 import uk.co.fuelprices.data.repository.FuelRepository
+import uk.co.fuelprices.data.repository.RatingException
 import uk.co.fuelprices.data.repository.UserPreferencesStore
 import uk.co.fuelprices.data.repository.syncPreferencesBestEffort
 import uk.co.fuelprices.util.FeatureFlags
@@ -30,6 +32,8 @@ data class PreferencesUiState(
     // must be false: see the comment there for why.
     val showBuyMeCoffee: Boolean = true,
     val showAlsoAvailableOnWeb: Boolean = true,
+    val isDeletingAccount: Boolean = false,
+    val deleteAccountError: String? = null,
 )
 
 @HiltViewModel
@@ -119,6 +123,37 @@ class PreferencesViewModel @Inject constructor(
         }
     }
 
+    /** Permanently deletes the account on the server, then signs out here. */
+    fun deleteAccount() {
+        if (_state.value.isDeletingAccount) return
+        _state.value = _state.value.copy(isDeletingAccount = true, deleteAccountError = null)
+        viewModelScope.launch {
+            try {
+                repo.deleteAccount()
+                _state.value = _state.value.copy(isLoggedIn = false, email = null)
+            } catch (e: RatingException) {
+                if (e.status == 401) {
+                    _state.value = _state.value.copy(
+                        isLoggedIn = repo.isLoggedIn(),
+                        deleteAccountError = "Your session has expired. Sign in again, then delete your account.",
+                    )
+                } else {
+                    _state.value = _state.value.copy(deleteAccountError = e.detail ?: "Please try again.")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(deleteAccountError = "Couldn't reach the server. Please try again.")
+            } finally {
+                _state.value = _state.value.copy(isDeletingAccount = false)
+            }
+        }
+    }
+
+    fun dismissDeleteAccountError() {
+        _state.value = _state.value.copy(deleteAccountError = null)
+    }
+
     fun setFuelType(type: String) {
         _state.value = _state.value.copy(fuelType = type)
         saveNow()
@@ -189,6 +224,8 @@ class PreferencesViewModel @Inject constructor(
                     themeMode = prefs.themeMode,
                 ),
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
         }
     }

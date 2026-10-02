@@ -21,5 +21,5 @@ fun testStationDto(
     prices = prices,
 )
 
-fun testPriceDto(fuelType: String, pricePence: Double) =
-    PriceDto(fuelType = fuelType, pricePence = pricePence, reportedAt = "2026-01-01T00:00:00Z")
+fun testPriceDto(fuelType: String, pricePence: Double, warning: String? = null) =
+    PriceDto(fuelType = fuelType, pricePence = pricePence, reportedAt = "2026-01-01T00:00:00Z", warning = warning)

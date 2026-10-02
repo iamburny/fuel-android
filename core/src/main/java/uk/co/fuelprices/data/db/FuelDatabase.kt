@@ -27,6 +27,8 @@ data class StationEntity(
     // shape because the original JSON is round-tripped verbatim.
     val amenitiesJson: String?,
     val openingHoursJson: String?,
+    // Driver-reported, cached alongside the station so cache-served lists still show the warning.
+    val priceAccuracyWarning: Boolean = false,
     val lastFetchedAt: Long = System.currentTimeMillis(),
 )
 
@@ -46,6 +48,7 @@ data class FuelPriceEntity(
     val fuelType: String,
     val pricePence: Double,
     val reportedAt: String,
+    val warning: String? = null,
 )
 
 data class StationWithPrices(
@@ -81,15 +84,28 @@ interface StationDao {
     @Query("SELECT * FROM stations WHERE id = :id")
     suspend fun getStationById(id: Int): StationWithPrices?
 
+    /**
+     * Offline fallback for the server's `/api/stations/search`. Matches the same four fields the
+     * server does — name, postcode, brand and town — so a place name finds the same stations
+     * offline as online.
+     *
+     * There is deliberately no `ORDER BY`: the caller ([uk.co.fuelprices.data.repository.FuelRepository])
+     * sorts by distance in Kotlin when it has a fix, since SQLite can't do haversine. [limit] is
+     * therefore a *candidate* cap here, not the number of rows the user sees — the repository
+     * passes a wider cap and trims to the display limit after sorting, so the nearest matches
+     * aren't lost to an arbitrary pre-sort truncation. It has no default for that reason: a
+     * caller passing the display limit here would silently reintroduce that truncation.
+     */
     @Transaction
     @Query("""
-        SELECT * FROM stations 
-        WHERE name LIKE '%' || :query || '%' 
+        SELECT * FROM stations
+        WHERE name LIKE '%' || :query || '%'
            OR postcode LIKE '%' || :query || '%'
            OR brand LIKE '%' || :query || '%'
+           OR town LIKE '%' || :query || '%'
         LIMIT :limit
     """)
-    suspend fun searchStations(query: String, limit: Int = 20): List<StationWithPrices>
+    suspend fun searchStations(query: String, limit: Int): List<StationWithPrices>
 
     @Upsert
     suspend fun upsertStations(stations: List<StationEntity>)
@@ -105,10 +121,9 @@ interface StationDao {
 
 @Database(
     entities = [StationEntity::class, FuelPriceEntity::class],
-    // v2: StationEntity gained addressLine2/county/phone, the closure/motorway/supermarket flags,
-    // and JSON columns for amenities + opening hours. The cache is rebuildable, so the DI builder's
-    // fallbackToDestructiveMigration() handles the bump — no hand-written Migration needed.
-    version = 2,
+    // The cache is rebuildable, so the DI builder's fallbackToDestructiveMigration() handles any
+    // version bump by dropping it — no hand-written Migration needed.
+    version = 4,
     exportSchema = false,
 )
 abstract class FuelDatabase : RoomDatabase() {

@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import uk.co.fuelprices.data.api.StationDto
+import uk.co.fuelprices.data.api.cheapestUnflaggedPrice
 import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferencesStore
 import uk.co.fuelprices.util.AppAnalytics
@@ -22,6 +23,7 @@ import uk.co.fuelprices.util.DefaultLocation
 import uk.co.fuelprices.util.LocationHelper
 import uk.co.fuelprices.util.haversineMiles
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 
 /** North-up (the original, only-ever behavior) vs. rotating the map so the direction the user is
  *  currently travelling always faces up on screen, like a car navigation app's heading-up mode. */
@@ -33,8 +35,16 @@ data class NearbyUiState(
     val selectedFuelType: String = "E10",
     val radiusMiles: Double = 10.0,
     val searchQuery: String = "",
+    // NOT a reliable answer to "where is the user": loadNearby() fills these with DefaultLocation
+    // (a hardcoded Oxford point) so the map has somewhere to point when location is unavailable.
+    // Anything that needs the user's actual position — search ranking especially — has to check
+    // [hasGpsFix] first.
     val userLat: Double? = null,
     val userLng: Double? = null,
+    // True once a real Location has arrived. Sticky: a momentary GPS failure shouldn't unlearn a
+    // position we already had. Because it is sticky, userLat/userLng must be sticky with it — see
+    // loadNearby(), which deliberately declines to overwrite a known fix with the fallback.
+    val hasGpsFix: Boolean = false,
     // Gates the map's "my location" blue dot — enabling it without the permission actually
     // granted throws a SecurityException and crashes the app, so this must reflect the real
     // permission state rather than being assumed true.
@@ -107,15 +117,15 @@ sealed interface NearbyFavouriteEvent {
 
 /** Client-side derived view of whatever's currently pinned on the map (viewportStations after a
  *  drag, else the GPS-anchored `stations`), sorted ascending by price for `selectedFuelType` and
- *  filtered to stations that report one. No network call — this is a pure function over state
+ *  filtered to stations that report one (flagged prices don't count, matching the backend's
+ *  cheapest-stations ranking). No network call — this is a pure function over state
  *  already held, so it can't drift from what's actually pinned on the map, and re-evaluates live
  *  (fuel-type change / a drag while the panel is open) since it's called fresh on every
  *  recomposition rather than cached. Backs the search panel's default (non-search) list. */
 fun NearbyUiState.cheapestSortedStations(): List<StationDto> =
     (viewportStations ?: stations)
         .mapNotNull { station ->
-            station.prices.filter { it.fuelType == selectedFuelType }.minByOrNull { it.pricePence }
-                ?.let { station to it.pricePence }
+            station.cheapestUnflaggedPrice(selectedFuelType)?.let { station to it.pricePence }
         }
         .sortedBy { it.second }
         .map { it.first }
@@ -216,6 +226,7 @@ class NearbyViewModel @Inject constructor(
                 _state.value = s.copy(
                     userLat = if (moved) loc.latitude else s.userLat,
                     userLng = if (moved) loc.longitude else s.userLng,
+                    hasGpsFix = true,
                     lastKnownBearing = bearing,
                     mapBearing = when (s.mapOrientationMode) {
                         MapOrientationMode.NORTH_UP -> 0f
@@ -253,11 +264,20 @@ class NearbyViewModel @Inject constructor(
                 // reloads (radius/fuel/mode changes) shouldn't yank the map back if the user has
                 // since dragged it elsewhere.
                 val isFirstFix = _state.value.userLat == null
+                // hasGpsFix is sticky, so userLat/userLng must be too — otherwise the flag says
+                // "this is a real position" while the value underneath has been replaced by the
+                // Oxford fallback. getCurrentLocation() returning null after a good fix is
+                // routine (indoors, emulators, a Play Services hiccup — see LocationHelper), so
+                // without this guard a pull-to-refresh or radius change silently re-ranks a
+                // Glasgow user's next search around Oxford and labels every row ~300 mi.
+                val isRealFix = location != null
+                val keepKnownFix = _state.value.hasGpsFix && !isRealFix
                 _state.value = _state.value.copy(
                     isLoading = false,
                     stations = response.stations,
-                    userLat = lat,
-                    userLng = lng,
+                    userLat = if (keepKnownFix) _state.value.userLat else lat,
+                    userLng = if (keepKnownFix) _state.value.userLng else lng,
+                    hasGpsFix = _state.value.hasGpsFix || isRealFix,
                     cameraRecenterToken = if (isFirstFix) _state.value.cameraRecenterToken + 1 else _state.value.cameraRecenterToken,
                 )
             } catch (e: Exception) {
@@ -367,8 +387,21 @@ class NearbyViewModel @Inject constructor(
             analytics.trackEvent("search", mapOf("search_term" to query))
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
-                val response = repo.searchStations(query)
+                // Gated on hasGpsFix, not just on userLat/userLng being non-null: those hold the
+                // Oxford fallback whenever location is unavailable, and sending it would rank the
+                // results — and label every row's distance — from a place the user has never been.
+                val s = _state.value
+                val response = repo.searchStations(
+                    query,
+                    lat = s.userLat.takeIf { s.hasGpsFix },
+                    lng = s.userLng.takeIf { s.hasGpsFix },
+                )
                 _state.value = _state.value.copy(isLoading = false, stations = response.stations)
+            } catch (e: CancellationException) {
+                // A superseded keystroke is not a failure. Letting it reach the catch-all below
+                // would surface "StandaloneCoroutine was cancelled" in the UI for the 400ms the
+                // replacement job spends debouncing.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoading = false, error = e.message)
             }

@@ -8,10 +8,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import uk.co.fuelprices.data.api.NationalAverageDto
 import uk.co.fuelprices.data.api.PriceHistoryPoint
 import uk.co.fuelprices.data.api.StationDto
+import uk.co.fuelprices.data.api.cheapestUnflaggedPrice
 import uk.co.fuelprices.data.repository.FuelRepository
 import uk.co.fuelprices.data.repository.UserPreferencesStore
 import uk.co.fuelprices.util.AppAnalytics
@@ -38,6 +40,8 @@ data class DetailUiState(
     // first's result lands. Mirrors NearbyViewModel's pendingFavouriteToggles, just scoped to
     // this screen's single station rather than a set of many.
     val pendingFavouriteToggle: Boolean = false,
+    // Set when a signed-out user taps the heart; DetailScreen routes to sign-in and consumes it.
+    val signInRequested: Boolean = false,
 )
 
 @HiltViewModel
@@ -95,7 +99,7 @@ class DetailViewModel @Inject constructor(
                 var driveCost: Double? = null
                 if (preferences.canEstimateDriveCost) {
                     val location = locationHelper.getCurrentLocation()
-                    val price = station.prices.firstOrNull { it.fuelType == preferences.fuelType }?.pricePence
+                    val price = station.cheapestUnflaggedPrice(preferences.fuelType)?.pricePence
                     if (location != null && price != null) {
                         distanceMiles = haversineMiles(
                             location.latitude, location.longitude, station.latitude, station.longitude,
@@ -134,10 +138,18 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    /** A favourite tapped while signed out, saved once the user is back from signing in. */
+    private var favouriteAfterSignIn = false
+
     fun toggleFavourite() {
         if (_state.value.pendingFavouriteToggle) return
         _state.value = _state.value.copy(pendingFavouriteToggle = true)
         viewModelScope.launch {
+            if (!repo.isLoggedIn()) {
+                favouriteAfterSignIn = true
+                _state.update { it.copy(pendingFavouriteToggle = false, signInRequested = true) }
+                return@launch
+            }
             try {
                 // Only these two fields decide which branch to take, read fresh right before the
                 // suspending call below — the actual state write in each branch goes through
@@ -163,6 +175,38 @@ class DetailViewModel @Inject constructor(
             } catch (_: Exception) {
             } finally {
                 _state.update { it.copy(pendingFavouriteToggle = false) }
+            }
+        }
+    }
+
+    fun consumeSignInRequest() {
+        _state.update { it.copy(signInRequested = false) }
+    }
+
+    /**
+     * Called on every return to the screen. After a sign-in started from the heart, re-reads the
+     * account's favourites (the station may already be one) and saves it if it isn't.
+     */
+    fun onResumed() {
+        if (!favouriteAfterSignIn) return
+        viewModelScope.launch {
+            if (!repo.isLoggedIn()) {
+                // Backed out of sign-in: forget the tap rather than favouriting later by surprise.
+                favouriteAfterSignIn = false
+                return@launch
+            }
+            favouriteAfterSignIn = false
+            val existing = try {
+                repo.getFavourites().find { it.stationId == stationId }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+            if (existing != null) {
+                _state.update { it.copy(isFavourite = true, favouriteId = existing.id, notifyOnDrop = existing.notifyOnDrop) }
+            } else {
+                toggleFavourite()
             }
         }
     }

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
@@ -23,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
@@ -45,6 +47,9 @@ data class MapMarker(
     // Rendered as a gold ring + star badge on the price chip, layered on top of (not replacing)
     // the fuel-type fill color, so it never collides with that existing color coding.
     val isFavourite: Boolean = false,
+    // Drivers often found the pump price didn't match: an amber "!" badge on the chip's opposite
+    // corner to the favourite star. Never changes the chip's colour or price.
+    val priceAccuracyWarning: Boolean = false,
 )
 
 /** Builds a [CameraPosition] targeting (lat, lng) at the given zoom/bearing — extracted so the
@@ -151,6 +156,7 @@ fun FuelMapView(
                     m.id ?: -1,
                     m.snippet,
                     m.isFavourite,
+                    m.priceAccuracyWarning,
                     state = MarkerState(position = LatLng(m.lat, m.lng)),
                     title = m.title,
                     zIndex = if (m.isFavourite) 1f else 0f,
@@ -173,6 +179,26 @@ fun FuelMapView(
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                             )
+                        }
+                        if (m.priceAccuracyWarning) {
+                            Surface(
+                                shape = CircleShape,
+                                color = AccuracyWarningAmber,
+                                border = BorderStroke(1.dp, Color.White),
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .offset(x = (-4).dp, y = (-4).dp)
+                                    .size(12.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        "!",
+                                        color = Color.Black,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                            }
                         }
                         if (m.isFavourite) {
                             Icon(

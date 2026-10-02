@@ -52,11 +52,50 @@ class DetailViewModelTest {
         coEvery { repo.getPriceHistory(1, "E10") } returns PriceHistoryResponse(1, "Station", "E10", emptyList())
         coEvery { repo.getPriceHistory(1, "E5") } returns PriceHistoryResponse(1, "Station", "E5", emptyList())
         coEvery { repo.getFavourites() } returns emptyList()
+        coEvery { repo.isLoggedIn() } returns true
         coEvery { repo.getNationalAverages() } returns AveragesResponse(emptyList(), "", "")
         coEvery { preferencesStore.get() } returns UserPreferences(fuelType = "E10")
 
         val savedState = SavedStateHandle(mapOf("stationId" to 1))
         return DetailViewModel(savedState, repo, locationHelper, preferencesStore, analytics)
+    }
+
+    @Test
+    fun `signed out, the heart asks for sign-in and saves the favourite on return`() = runTest(mainDispatcherRule.dispatcher) {
+        val viewModel = buildViewModel()
+        coEvery { repo.isLoggedIn() } returns false
+        coEvery { repo.addFavourite(any(), any()) } returns FavouriteDto(99, 1, "E10", true)
+        advanceUntilIdle()
+
+        viewModel.toggleFavourite()
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.signInRequested)
+        coVerify(exactly = 0) { repo.addFavourite(any(), any()) }
+
+        viewModel.consumeSignInRequest()
+        coEvery { repo.isLoggedIn() } returns true
+        viewModel.onResumed()
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repo.addFavourite(any(), any()) }
+        assertEquals(true, viewModel.state.value.isFavourite)
+    }
+
+    @Test
+    fun `backing out of sign-in doesn't favourite the station later`() = runTest(mainDispatcherRule.dispatcher) {
+        val viewModel = buildViewModel()
+        coEvery { repo.isLoggedIn() } returns false
+        advanceUntilIdle()
+
+        viewModel.toggleFavourite()
+        advanceUntilIdle()
+        viewModel.onResumed()
+        advanceUntilIdle()
+        coEvery { repo.isLoggedIn() } returns true
+        viewModel.onResumed()
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { repo.addFavourite(any(), any()) }
     }
 
     @Test

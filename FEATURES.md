@@ -51,7 +51,10 @@ Find fuel stations near you on a live map, with a searchable/filterable list.
   "my location" blue dot is only enabled when location permission is actually granted (enabling it
   without the permission crashes the app).
 - **Station pins** coloured per the selected fuel type, each labelled with the cheapest price of
-  that fuel type at the station (e.g. "129.9p") or "No price."
+  that fuel type at the station (e.g. "129.9p") or "No price." With driver ratings switched on, a
+  station whose raters often found the pump price didn't match gets an amber "!" badge on its pin
+  and a "Drivers report price differences" chip on its list row; neither affects sorting,
+  filtering or the price shown.
 - **Fuel-type pill** (top-right) always shows the current fuel type; tap to cycle through all six.
 - **Drag to explore:** panning the map loads stations for the newly visible viewport — both the
   map pins *and* the list below update to the dragged-to area (no network call for the list; it's
@@ -62,10 +65,14 @@ Find fuel stations near you on a live map, with a searchable/filterable list.
   and restore the GPS pin set.
 - **Search / list panel** (toggled top-right via a coin icon): a fixed "Search by name, postcode,
   or brand" field (debounced, needs 2+ chars); a scrollable row of fuel-type filter chips; and the
-  station list. A speech-bubble coach mark appears below the toggle button the first time it's
-  shown, pointing up at it; it stays on screen (it doesn't auto-hide) until tapped away — tapping
-  the bubble itself, tapping anywhere else on screen, or opening the panel all dismiss it — after
-  which it's never shown again.
+  station list. Search matches case-insensitively on name, postcode, brand and town, and results
+  come back ranked by relevance (an exact name or postcode match first, then a name prefix, then
+  everything else). When there's a GPS fix, it's sent with the query and distance breaks ties
+  *within* a relevance tier. Before the first fix the query is sent without any position at all
+  and results are ranked on relevance alone. A speech-bubble coach mark appears below the toggle
+  button the first time it's shown, pointing up at it; it stays on screen (it doesn't auto-hide)
+  until tapped away — tapping the bubble itself, tapping anywhere else on screen, or opening the
+  panel all dismiss it — after which it's never shown again.
 - **Default list is cheapest-first:** while not searching, the list shows exactly what's pinned on
   the map, sorted ascending by price for the selected fuel type — stations with no price for that
   fuel type are omitted (with an explicit "No nearby stations currently report a price" message,
@@ -87,7 +94,8 @@ National fuel-price statistics and historical trends.
   Tapping a card selects that fuel type and reloads the trend chart.
 - **"Price Trend"**: a **7d / 30d / 90d** range selector (default 30) and a line chart of average
   price over time, coloured by fuel type, with start/end dates and a "Range: X.Xp – Y.Yp" label.
-- **"Report a price discrepancy"** button → opens the Gov Fuel Finder site in a browser.
+- **"Report a price discrepancy"** button → opens GOV.UK's "Report an error in fuel prices or
+  forecourt details" guidance page in a browser.
 - Data-source / Open Government Licence compliance notice.
 - **Requires connectivity** — national stats and trends are never cached.
 
@@ -115,10 +123,26 @@ Everything about one station, plus favouriting, directions, and history.
 - **Current Prices:** every fuel type, cheapest first, each with the label, an unmodified
   "Reported: <timestamp>", a **coloured delta vs national average** ("+1.2p vs national avg" —
   green if at/below average, red if above), and the bold coloured price.
+- **Flagged prices:** a price the backend caveats (`warning`: price unchanged for 60+ days, or far
+  below/above the national median) is still shown unmodified, but with an amber badge ("May be
+  out of date" / "May be incorrect"), a one-line explanation, and a "Report a price discrepancy"
+  link, and no national-average delta; flagged rows sort after the unflagged ones (phone and car).
+  Flagged prices are never used as a station's headline or
+  cheapest price elsewhere (map pins, list rows, the cheapest-first list, car rows and net-savings
+  sorting). Unknown or missing `warning` values are treated as unflagged.
 - **Amenities** chips (when present).
 - **Opening Hours** table for the seven weekdays (today's row highlighted/bold), plus a bank
   holidays sub-list when available.
 - **Price History (30 days):** a bar chart with the date range and a "X.Xp – Y.Yp" label.
+- **Driver reports** (flag `shared.station-ratings`, default off): a separate section, labelled as
+  not Fuel Finder data. Shows the average stars, the share of drivers who found the pump price
+  matched, and the average gap when it didn't (once three drivers have rated), then moderated
+  comments 20 at a time with **Report** and **Hide comments from this reviewer**. **Rate this
+  station** opens a bottom sheet: fuel, did the price match, what you paid (optional), 1–5 stars, a
+  280-character comment. It first resolves whatever stops the user rating — sign-in (returns to
+  Detail), the 7-day cooldown, email verification (link opens the website), a new or suspended
+  account, the daily cap, or accepting the reviews content policy (a checkbox in the form). A
+  rating stays editable for 24 hours, up to three times.
 - Discrepancy-report button + compliance notice.
 - Favourite toggling, history, averages, and drive-cost are all best-effort (fail silently).
 
@@ -131,6 +155,7 @@ confirmation appears).
 - **Long fuel names** toggle — show "Unleaded (E10)" instead of "E10" everywhere.
 - **Your car** — **Average MPG** and **Tank capacity (litres)** fields. These unlock the drive-cost
   estimate (phone Detail) and the net-savings sorting (car app).
+- **Delete account** (signed in) — confirms, then calls `DELETE /api/auth/me` and signs out.
 
 ---
 
@@ -162,7 +187,8 @@ onto the nearby-stations list — there is no home/menu screen. Flow:
 ### Station Detail
 
 - A `PaneTemplate`: address; per-fuel price rows (cheapest first) with a signed "vs national avg"
-  delta line (shown regardless of MPG/tank prefs); a required **Data source** attribution row; and
+  delta line (shown regardless of MPG/tank prefs; a flagged price shows its "May be out of date" /
+  "May be incorrect" caveat there instead); a required **Data source** attribution row; and
   a **Navigate** action that launches the car's navigation app to the station.
 
 ### Preferences & Fuel Type Picker
@@ -196,6 +222,12 @@ remove), and discrepancy reporting.
 - **Stations are cached** (Room, 24-hour TTL). Nearby and map-bounds queries are **cache-first**;
   on a network failure they fall back to cached stations. A single nearby fetch deliberately omits
   the fuel-type filter so the cache is populated for all fuel types.
+- **Search is network-first**, falling back to the cache only when the request fails. The offline
+  fallback matches the same four fields the server does (name, postcode, brand, town) and, when
+  there's a GPS fix, orders results nearest-first and shows distances — so an offline search reads
+  the same way an online one does. It can't reproduce the server's relevance ranking, though, so
+  offline ordering is purely by distance, and a very broad query against a large cache is sorted
+  from a capped pool of matches rather than every last one.
 - The **manual Refresh** button on Nearby bypasses the cache and forces a live network fetch.
 - **Prices are never cached** — cheapest, averages, history, and trends require connectivity.
 - Cached stations retain **full detail** — phone, county, second address line, amenities, opening
@@ -216,7 +248,8 @@ remove), and discrepancy reporting.
 ### Accounts
 
 - Email/password **login and registration**; the JWT is stored via DataStore. Registration does
-  not auto-login. Sign-in is required only for **Favourites**.
+  not auto-login. Sign-in is required only for **Favourites** and for rating, reporting or hiding
+  station reviews.
 
 ### Price-drop alerts
 

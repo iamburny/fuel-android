@@ -137,6 +137,10 @@ data class StationDto(
     @SerialName("opening_hours") val openingHours: OpeningHoursDto? = null,
     @SerialName("distance_miles") val distanceMiles: Double? = null,
     val prices: List<PriceDto> = emptyList(),
+    // Driver-reported, not Fuel Finder data. Only `GET /api/stations/{id}` carries the summary;
+    // the list endpoints carry just the warning flag.
+    @SerialName("rating_summary") val ratingSummary: RatingSummaryDto? = null,
+    @SerialName("price_accuracy_warning") val priceAccuracyWarning: Boolean = false,
 )
 
 @Serializable
@@ -144,7 +148,44 @@ data class PriceDto(
     @SerialName("fuel_type") val fuelType: String,
     @SerialName("price_pence") val pricePence: Double,
     @SerialName("reported_at") val reportedAt: String,
-)
+    /** Raw backend caveat code ("stale", "unusually_low", "unusually_high"), or null. Kept as a
+     *  plain string rather than an enum so a code this build doesn't know can't fail
+     *  deserialization — read it through [priceWarning], which maps unknown codes to null. */
+    val warning: String? = null,
+) {
+    val priceWarning: PriceWarning? get() = PriceWarning.fromCode(warning)
+
+    /** True when the backend has caveated this price. Flagged prices are still displayed where a
+     *  station's prices are listed, but never chosen as a station's headline/cheapest price or
+     *  compared against the national average. */
+    val isFlagged: Boolean get() = priceWarning != null
+}
+
+enum class PriceWarning(val code: String, val badgeLabel: String, val explanation: String) {
+    STALE(
+        "stale",
+        "May be out of date",
+        "Unchanged for over 60 days, so this price may be out of date.",
+    ),
+    UNUSUALLY_LOW(
+        "unusually_low",
+        "May be incorrect",
+        "Much lower than other stations' prices for this fuel, so it may have been reported incorrectly.",
+    ),
+    UNUSUALLY_HIGH(
+        "unusually_high",
+        "May be incorrect",
+        "Much higher than other stations' prices for this fuel, so it may have been reported incorrectly.",
+    );
+
+    companion object {
+        fun fromCode(code: String?): PriceWarning? = entries.firstOrNull { it.code == code }
+    }
+}
+
+/** Cheapest price this station reports for [fuelType], ignoring flagged prices. */
+fun StationDto.cheapestUnflaggedPrice(fuelType: String): PriceDto? =
+    prices.filter { it.fuelType == fuelType && !it.isFlagged }.minByOrNull { it.pricePence }
 
 // ── Response wrappers ────────────────────────────────────
 

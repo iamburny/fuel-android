@@ -95,6 +95,14 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    testOptions {
+        unitTests {
+            // ViewModel tests mock android.location.Location rather than constructing one; this
+            // keeps any incidental android.* reference returning a default instead of throwing.
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {

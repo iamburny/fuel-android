@@ -21,37 +21,107 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.foundation.horizontalScroll
 import uk.co.fuelprices.data.api.*
+import uk.co.fuelprices.ui.components.DISCREPANCY_REPORT_URL
 import uk.co.fuelprices.ui.components.DataAttributionNotice
 import uk.co.fuelprices.ui.components.PriceLineChart
 import uk.co.fuelprices.ui.components.FuelMapView
 import uk.co.fuelprices.ui.components.MapMarker
 import uk.co.fuelprices.ui.theme.fuelColor
 import uk.co.fuelprices.ui.theme.fuelLabel
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import uk.co.fuelprices.data.api.RatingSummaryDto
+import uk.co.fuelprices.ui.components.AccuracyWarningAmber
+import java.util.Locale
+import uk.co.fuelprices.ui.theme.LocalIsDarkTheme
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import uk.co.fuelprices.util.StationText
 import java.time.DayOfWeek
 import java.time.LocalDate
+
+/** How much of the map shows below the floating top bar. */
+private val VISIBLE_MAP_HEIGHT = 220.dp
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun DetailScreen(
     onBack: () -> Unit,
+    onSignIn: () -> Unit,
     viewModel: DetailViewModel = hiltViewModel(),
+    // The same instance StationRatingsSection resolves: both are scoped to this nav entry.
+    ratingsViewModel: StationRatingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val ratingsState by ratingsViewModel.state.collectAsState()
     val context = LocalContext.current
+    val scrollState = rememberScrollState()
+    val density = LocalDensity.current
+    // The bar floats over the map on a faint fade, and turns solid once the map has scrolled up
+    // under it, so its buttons never sit bare over the text below.
+    val overMap by remember {
+        derivedStateOf { scrollState.value < with(density) { VISIBLE_MAP_HEIGHT.toPx() } }
+    }
+    val barColor by animateColorAsState(
+        if (overMap) Color.Transparent else MaterialTheme.colorScheme.surface,
+        label = "detailBarColor",
+    )
+    // A very faint fade gives the floating bar some depth; legibility comes from each button's own
+    // round backing, which reads over any map tile where a fade alone can't.
+    val fade = Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.18f), Color.Transparent))
+    val barIconColor = MaterialTheme.colorScheme.onSurface
+    // Always the same padding and shape, so the buttons don't move: only the backing's opacity
+    // changes as the bar turns solid.
+    val backingAlpha by animateFloatAsState(if (overMap) 0.92f else 0f, label = "detailBackingAlpha")
+    val backing = Modifier
+        .padding(4.dp)
+        .background(MaterialTheme.colorScheme.surface.copy(alpha = backingAlpha), CircleShape)
+
+    LaunchedEffect(state.signInRequested) {
+        if (state.signInRequested) {
+            viewModel.consumeSignInRequest()
+            onSignIn()
+        }
+    }
+    LifecycleResumeEffect(Unit) {
+        viewModel.onResumed()
+        onPauseOrDispose {}
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(state.station?.name ?: "Station") },
+                // No title: the bar has no room for a forecourt name beside its actions, so the name
+                // is the heading under the map instead.
+                title = {},
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = barColor,
+                    navigationIconContentColor = barIconColor,
+                    actionIconContentColor = barIconColor,
+                ),
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = onBack, modifier = backing) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
                 actions = {
+                    if (ratingsState.enabled && state.station != null) {
+                        RatingBadgeButton(
+                            summary = state.station?.ratingSummary,
+                            contentColor = barIconColor,
+                            backing = backing,
+                            onClick = { ratingsViewModel.onRateClicked() },
+                        )
+                    }
                     if (state.isFavourite) {
                         IconButton(
                             onClick = { viewModel.toggleNotify() },
+                            modifier = backing,
                             enabled = !state.pendingFavouriteToggle,
                         ) {
                             Icon(
@@ -62,6 +132,8 @@ fun DetailScreen(
                     }
                     IconButton(
                         onClick = { viewModel.toggleFavourite() },
+                        modifier = backing,
+                        // Signed out, this routes to sign-in and saves the favourite on return.
                         // Also gated on !isLoading: selectedFuelType is null until load()
                         // completes, so a favourite tapped before then would fall back to the
                         // "E10" default in toggleFavourite() rather than the real active filter.
@@ -85,22 +157,41 @@ fun DetailScreen(
 
         val station = state.station ?: return@Scaffold
 
+        // No top padding: the map runs up behind the status bar and the floating top bar, and is
+        // taller by exactly the space they cover.
         Column(
             Modifier
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
+                .padding(bottom = padding.calculateBottomPadding())
+                .verticalScroll(scrollState)
         ) {
             // Mini map
-            FuelMapView(
-                modifier = Modifier.fillMaxWidth().height(200.dp),
-                centerLat = station.latitude,
-                centerLng = station.longitude,
-                zoomLevel = 15f,
-                markers = listOf(MapMarker(station.latitude, station.longitude, station.name)),
-            )
+            Box {
+                FuelMapView(
+                    modifier = Modifier.fillMaxWidth().height(padding.calculateTopPadding() + VISIBLE_MAP_HEIGHT),
+                    centerLat = station.latitude,
+                    centerLng = station.longitude,
+                    zoomLevel = 15f,
+                    markers = listOf(MapMarker(station.latitude, station.longitude, station.name)),
+                )
+                // A faint fade behind the floating bar, so its buttons stay legible over busy map
+                // detail.
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(padding.calculateTopPadding() + 16.dp)
+                        .background(fade),
+                )
+            }
 
             // Station info
             Column(Modifier.padding(16.dp)) {
+                Text(
+                    // The feed is mostly ALL CAPS; shown in the same title case as the website.
+                    StationText.displayName(station.name),
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.semantics { heading() },
+                )
+                Spacer(Modifier.height(4.dp))
                 station.brand?.let {
                     Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(2.dp))
@@ -166,15 +257,24 @@ fun DetailScreen(
                     }
                 }
 
-                // Directions button
+                // The station's two actions, side by side, wrapping on a narrow screen.
                 Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = {
-                    val uri = Uri.parse("google.navigation:q=${station.latitude},${station.longitude}")
-                    context.startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage("com.google.android.apps.maps"))
-                }) {
-                    Icon(Icons.Default.Directions, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Get directions")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        val uri = Uri.parse("google.navigation:q=${station.latitude},${station.longitude}")
+                        context.startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage("com.google.android.apps.maps"))
+                    }) {
+                        Icon(Icons.Default.Directions, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Get directions")
+                    }
+                    if (ratingsState.enabled) {
+                        OutlinedButton(onClick = { ratingsViewModel.onRateClicked() }) {
+                            Icon(Icons.Default.StarBorder, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (ratingsState.canEditOwn) "Edit your rating" else "Rate this station")
+                        }
+                    }
                 }
             }
 
@@ -187,8 +287,12 @@ fun DetailScreen(
                 modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 4.dp),
             )
 
-            station.prices.sortedBy { it.pricePence }.forEach { price ->
-                val nationalAvgPence = state.nationalAverages
+            // Flagged prices go last so the top row is always a usable price.
+            station.prices.sortedWith(compareBy({ it.isFlagged }, { it.pricePence })).forEach { price ->
+                val warning = price.priceWarning
+                // A caveated price is excluded from the national figures, so a delta against
+                // them would be meaningless.
+                val nationalAvgPence = if (warning != null) null else state.nationalAverages
                     .firstOrNull { it.fuelType == price.fuelType }?.avgPricePence
                 ListItem(
                     headlineContent = {
@@ -198,6 +302,9 @@ fun DetailScreen(
                         Column {
                             // Compliance: show original timestamp unmodified
                             Text("Reported: ${price.reportedAt}")
+                            if (warning != null) {
+                                PriceWarningNotice(warning)
+                            }
                             if (nationalAvgPence != null) {
                                 val delta = price.pricePence - nationalAvgPence
                                 Text(
@@ -341,6 +448,10 @@ fun DetailScreen(
 
             HorizontalDivider()
 
+            // Driver ratings sit in their own section after all the Fuel Finder data, so they're
+            // never read as part of the published prices.
+            StationRatingsSection(station = station, onSignIn = onSignIn, viewModel = ratingsViewModel)
+
             // Compliance: discrepancy report link (required by Fair Use Policy) plus a real,
             // tappable link to the official gov.uk source (required by the Misleading Claims
             // policy — a plain-text mention of "gov.uk/..." is not an accessible link).
@@ -354,6 +465,38 @@ fun DetailScreen(
 private fun formatOpeningTime(value: String?): String {
     if (value == null) return ""
     return if (Regex("""^\d{1,2}:\d{2}:\d{2}$""").matches(value)) value.dropLast(3) else value
+}
+
+/** Amber, in the same chip style as the station status badges above the address. */
+private val PriceWarningAmber = Color(0xFFF59E0B)
+
+/** Caveat for a price the backend has flagged: a badge, why it was flagged, and a shortcut to
+ *  the official discrepancy report. The price itself is still shown unmodified alongside. */
+@Composable
+private fun PriceWarningNotice(warning: PriceWarning) {
+    val context = LocalContext.current
+    Column(Modifier.padding(top = 4.dp)) {
+        SuggestionChip(
+            onClick = {},
+            icon = { Icon(Icons.Default.Warning, null, Modifier.size(14.dp)) },
+            label = { Text(warning.badgeLabel, style = MaterialTheme.typography.labelSmall) },
+            colors = SuggestionChipDefaults.suggestionChipColors(
+                containerColor = PriceWarningAmber.copy(alpha = 0.15f),
+                // Amber text on its own tint is too faint to read; the icon carries the colour.
+                labelColor = MaterialTheme.colorScheme.onSurface,
+                iconContentColor = PriceWarningAmber,
+            ),
+        )
+        Text(warning.explanation, style = MaterialTheme.typography.bodySmall)
+        TextButton(
+            onClick = {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(DISCREPANCY_REPORT_URL)))
+            },
+            contentPadding = PaddingValues(0.dp),
+        ) {
+            Text("Report a price discrepancy", style = MaterialTheme.typography.labelMedium)
+        }
+    }
 }
 
 @Composable
@@ -397,6 +540,52 @@ private fun OpeningHoursTable(days: UsualDaysDto) {
                     textAlign = TextAlign.End,
                 )
             }
+        }
+    }
+}
+
+/**
+ * The station's driver score beside the favourite heart, and the quickest way to rate it: the
+ * average with a filled star once enough drivers have rated it, an outlined star until then.
+ */
+@Composable
+private fun RatingBadgeButton(
+    summary: RatingSummaryDto?,
+    contentColor: Color,
+    backing: Modifier,
+    onClick: () -> Unit,
+) {
+    val label = if (summary != null) {
+        String.format(Locale.UK, "Rated %.1f out of 5 by %d drivers. Rate this station", summary.avgStars, summary.raterCount)
+    } else {
+        "Rate this station"
+    }
+    TextButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 8.dp),
+        // widthIn replaces TextButton's own wider minimum, so the outlined star sits like the icons.
+        modifier = Modifier
+            .then(backing)
+            .widthIn(min = 48.dp)
+            .semantics(mergeDescendants = true) { contentDescription = label },
+    ) {
+        Icon(
+            if (summary != null) Icons.Default.Star else Icons.Default.StarBorder,
+            contentDescription = null,
+            // A darker amber on light bars, where the warning amber is too faint for an icon.
+            tint = when {
+                summary == null -> contentColor
+                LocalIsDarkTheme.current -> AccuracyWarningAmber
+                else -> Color(0xFFB45309)
+            },
+        )
+        if (summary != null) {
+            Spacer(Modifier.width(4.dp))
+            Text(
+                String.format(Locale.UK, "%.1f", summary.avgStars),
+                style = MaterialTheme.typography.titleSmall,
+                color = contentColor,
+            )
         }
     }
 }

@@ -2,6 +2,7 @@ package uk.co.fuelprices.util
 
 import uk.co.fuelprices.data.api.NationalAverageDto
 import uk.co.fuelprices.data.api.StationDto
+import uk.co.fuelprices.data.api.cheapestUnflaggedPrice
 import uk.co.fuelprices.data.repository.UserPreferences
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -53,7 +54,7 @@ fun estimateDriveCostPounds(distanceMiles: Double, mpg: Double, pricePence: Doub
  * Positive means the detour is worth it; negative means it costs more than it saves.
  *
  * Returns null if preferences don't have enough info yet, or the station has no distance or no
- * price for the preferred fuel type.
+ * unflagged price for the preferred fuel type.
  */
 fun estimateNetSavingsPounds(
     station: StationDto,
@@ -63,8 +64,7 @@ fun estimateNetSavingsPounds(
     val mpg = preferences.mpg ?: return null
     val tankCapacityLitres = preferences.tankCapacityLitres ?: return null
     val distanceMiles = station.distanceMiles ?: return null
-    val stationPricePence = station.prices
-        .firstOrNull { it.fuelType == preferences.fuelType }?.pricePence ?: return null
+    val stationPricePence = station.cheapestUnflaggedPrice(preferences.fuelType)?.pricePence ?: return null
     val avgPricePence = averages
         .firstOrNull { it.fuelType == preferences.fuelType }?.avgPricePence ?: return null
 

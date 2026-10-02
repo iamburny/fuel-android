@@ -31,7 +31,14 @@ const val DEFAULT_DATA_NOTICE: String =
         "independent app and is not affiliated with or endorsed by HM Government."
 
 private const val OFFICIAL_SOURCE_URL = "https://www.gov.uk/government/collections/fuel-finder"
-private const val LIVE_SERVICE_URL = "https://www.fuel-finder.service.gov.uk/"
+
+/**
+ * Destination of every "Report a price discrepancy" link, which the Fuel Finder scheme requires
+ * apps showing its prices to offer. GOV.UK's guidance page explains how to report a wrong price
+ * and links on to the service's report form, so the app doesn't depend on the form's own URL.
+ */
+internal const val DISCREPANCY_REPORT_URL =
+    "https://www.gov.uk/guidance/report-an-error-in-fuel-prices-or-forecourt-details"
 
 @Composable
 fun DataAttributionNotice(
@@ -45,7 +52,9 @@ fun DataAttributionNotice(
         if (showDiscrepancyButton) {
             TextButton(
                 onClick = {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LIVE_SERVICE_URL)))
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse(DISCREPANCY_REPORT_URL)),
+                    )
                 },
                 modifier = Modifier.padding(16.dp, 0.dp),
             ) {

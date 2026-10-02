@@ -35,6 +35,34 @@ fun PreferencesScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    // Account deletion is required in-app by the Play Store for any app that lets users create one.
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete account?") },
+            text = { Text("This permanently deletes your account, favourites, alerts and station ratings. This can't be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        viewModel.deleteAccount()
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") } },
+        )
+    }
+    state.deleteAccountError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissDeleteAccountError() },
+            title = { Text("Couldn't delete account") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { viewModel.dismissDeleteAccountError() }) { Text("OK") } },
+        )
+    }
 
     // Re-check the signed-in state, and pull the account's stored preferences, each time this
     // screen enters composition — mirrors the Favourites screen's per-entry reload. Without the
@@ -137,6 +165,19 @@ fun PreferencesScreen(
                             modifier = Modifier.weight(1f),
                         )
                         OutlinedButton(onClick = { viewModel.signOut() }) { Text("Sign out") }
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 4.dp, end = 16.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(
+                            onClick = { showDeleteConfirm = true },
+                            enabled = !state.isDeletingAccount,
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        ) { Text("Delete account") }
+                        if (state.isDeletingAccount) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        }
                     }
                 } else {
                     Column(Modifier.padding(16.dp)) {
