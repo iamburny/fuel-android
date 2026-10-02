@@ -29,11 +29,11 @@ import uk.co.fuelprices.ui.components.MapMarker
 import uk.co.fuelprices.ui.theme.fuelColor
 import uk.co.fuelprices.ui.theme.fuelLabel
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import uk.co.fuelprices.data.api.RatingSummaryDto
 import uk.co.fuelprices.ui.components.AccuracyWarningAmber
 import java.util.Locale
-import androidx.compose.ui.text.style.TextOverflow
 import uk.co.fuelprices.ui.theme.LocalIsDarkTheme
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -54,9 +54,9 @@ fun DetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                // One line: with the star, bell and heart a long forecourt name would otherwise wrap
-                // and clip inside the bar.
-                title = { Text(state.station?.name ?: "Station", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                // No title: the bar has no room for a forecourt name beside its actions, so the name
+                // is the heading under the map instead.
+                title = {},
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
@@ -121,6 +121,12 @@ fun DetailScreen(
 
             // Station info
             Column(Modifier.padding(16.dp)) {
+                Text(
+                    station.name,
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.semantics { heading() },
+                )
+                Spacer(Modifier.height(4.dp))
                 station.brand?.let {
                     Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(2.dp))
