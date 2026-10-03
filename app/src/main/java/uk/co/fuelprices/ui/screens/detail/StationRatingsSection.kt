@@ -123,7 +123,7 @@ fun StationRatingsSection(
             RatingSummaryCard(summary)
         } else {
             Text(
-                "Not enough reports yet. A score appears once three drivers have rated this station.",
+                noScoreMessage(station.ratingMinRaters),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -202,7 +202,7 @@ private fun RatingSummaryCard(summary: RatingSummaryDto) {
             SummaryFigure(
                 figure = "%.1f %s".format(summary.avgStars, starString(summary.avgStars)),
                 figureDescription = "%.1f out of 5 stars".format(summary.avgStars),
-                caption = "Average from ${summary.raterCount} driver${if (summary.raterCount == 1) "" else "s"}",
+                caption = "Average from ${driverCount(summary.raterCount)}",
             )
             summary.priceMatchPct?.let { pct ->
                 SummaryFigure(

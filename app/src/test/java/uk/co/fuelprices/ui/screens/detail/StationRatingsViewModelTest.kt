@@ -603,6 +603,19 @@ class RatingsCopyTest {
     }
 
     @Test
+    fun `the no-score message follows the backend's threshold`() {
+        assertEquals("Not enough reports yet.", noScoreMessage(null))
+        assertEquals("No score yet. Be the first to rate this station.", noScoreMessage(1))
+        assertEquals("Not enough reports yet. A score appears once 3 drivers have rated this station.", noScoreMessage(3))
+    }
+
+    @Test
+    fun `a single driver reads in the singular`() {
+        assertEquals("1 driver", driverCount(1))
+        assertEquals("7 drivers", driverCount(7))
+    }
+
+    @Test
     fun `stars round to the nearest whole star`() {
         assertEquals("★★☆☆☆", starString(2.3))
         assertEquals("★★★☆☆", starString(2.5))
