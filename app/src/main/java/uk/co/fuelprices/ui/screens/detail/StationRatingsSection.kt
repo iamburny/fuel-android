@@ -79,7 +79,7 @@ private val MatchGreen = Color(0xFF16A34A)
 
 /**
  * Driver reports for one station: the score, how often drivers found the pump price matched, and
- * their moderated comments. All of it comes from signed-in drivers, never from the Fuel Finder
+ * each driver's rating with its price report and, once moderation approves it, its comment. All of it comes from signed-in drivers, never from the Fuel Finder
  * data, and the section says so. Renders nothing while the shared.station-ratings flag is off.
  */
 @OptIn(ExperimentalLayoutApi::class)
@@ -160,7 +160,7 @@ fun StationRatingsSection(
                 modifier = Modifier.padding(top = 12.dp),
             ) {
                 Text(
-                    "$hidden comment${if (hidden == 1) "" else "s"} from reviewers you've hidden.",
+                    "$hidden rating${if (hidden == 1) "" else "s"} from reviewers you've hidden.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.align(Alignment.CenterVertically),
@@ -175,7 +175,7 @@ fun StationRatingsSection(
                 enabled = !state.loadingMore,
                 modifier = Modifier.padding(top = 12.dp),
             ) {
-                Text(if (state.loadingMore) "Loading…" else "Show more comments")
+                Text(if (state.loadingMore) "Loading…" else "Show more ratings")
             }
         }
     }
@@ -295,12 +295,13 @@ private fun RatingItem(
             }
             if (isOwn) {
                 Text(
-                    "Your comment",
+                    if (rating.comment != null) "Your comment" else "Your rating",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp),
                 )
-            } else {
+            } else if (rating.comment != null) {
+                // Only a published comment can be reported, or used to hide its author.
                 FlowRow {
                     TextButton(onClick = onReport, enabled = !busy) { Text("Report") }
                     TextButton(onClick = onHide, enabled = !busy) { Text("Hide comments from this reviewer") }

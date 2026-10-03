@@ -76,7 +76,7 @@ data class StationRatingsUiState(
 }
 
 /**
- * Driver reports on the Detail screen: the public comments, the signed-in user's own rating and
+ * Driver reports on the Detail screen: the public ratings list, the signed-in user's own rating and
  * blocked reviewers, and the rate sheet. Scoped to the Detail nav entry alongside
  * [DetailViewModel]; everything stays empty while the shared.station-ratings flag is off.
  */
