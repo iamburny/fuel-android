@@ -140,6 +140,8 @@ data class StationDto(
     // Driver-reported, not Fuel Finder data. Only `GET /api/stations/{id}` carries the summary;
     // the list endpoints carry just the warning flag.
     @SerialName("rating_summary") val ratingSummary: RatingSummaryDto? = null,
+    // How many drivers the summary waits for; null from a backend that doesn't send it.
+    @SerialName("rating_min_raters") val ratingMinRaters: Int? = null,
     @SerialName("price_accuracy_warning") val priceAccuracyWarning: Boolean = false,
 )
 

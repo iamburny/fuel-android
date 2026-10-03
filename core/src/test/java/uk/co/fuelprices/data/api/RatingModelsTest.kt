@@ -27,7 +27,16 @@ class RatingModelsTest {
         val station = json.decodeFromString<StationDto>(stationWithoutRatings)
 
         assertNull(station.ratingSummary)
+        assertNull(station.ratingMinRaters)
         assertFalse(station.priceAccuracyWarning)
+    }
+
+    @Test
+    fun `a station carries the backend's rating threshold`() {
+        val station = json.decodeFromString<StationDto>(
+            """{"id": 7, "gov_id": "abc", "name": "Shell", "latitude": 51.5, "longitude": -0.1, "rating_min_raters": 1}""",
+        )
+        assertEquals(1, station.ratingMinRaters)
     }
 
     @Test

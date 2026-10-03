@@ -556,7 +556,7 @@ private fun RatingBadgeButton(
     onClick: () -> Unit,
 ) {
     val label = if (summary != null) {
-        String.format(Locale.UK, "Rated %.1f out of 5 by %d drivers. Rate this station", summary.avgStars, summary.raterCount)
+        String.format(Locale.UK, "Rated %.1f out of 5 by %s. Rate this station", summary.avgStars, driverCount(summary.raterCount))
     } else {
         "Rate this station"
     }

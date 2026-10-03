@@ -54,6 +54,16 @@ private fun penceAmount(value: Double): String {
     return if (amount == amount.roundToInt().toDouble()) "${amount.roundToInt()}p" else "%.1fp".format(Locale.UK, amount)
 }
 
+/** What the ratings section says before a station has a score, given the API's threshold. */
+fun noScoreMessage(minRaters: Int?): String = when {
+    minRaters == null -> "Not enough reports yet."
+    minRaters <= 1 -> "No score yet. Be the first to rate this station."
+    else -> "Not enough reports yet. A score appears once $minRaters drivers have rated this station."
+}
+
+/** "1 driver" / "7 drivers". */
+fun driverCount(count: Int): String = "$count driver${if (count == 1) "" else "s"}"
+
 /** "3.1p more than listed" / "2p less than listed". */
 fun gapPhrase(gapPence: Double): String = when {
     gapPence == 0.0 -> "the listed price"

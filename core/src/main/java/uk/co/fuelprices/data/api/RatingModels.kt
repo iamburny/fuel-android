@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 // Driver reports on whether the pump price matched the published one. None of this is Fuel
 // Finder data. Every field has a default so a response missing one still decodes.
 
-/** Null on a station until at least three drivers have rated it in the last 12 months. */
+/** Null on a station until `rating_min_raters` drivers have rated it in the last 12 months. */
 @Serializable
 data class RatingSummaryDto(
     @SerialName("rater_count") val raterCount: Int = 0,
