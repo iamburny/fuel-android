@@ -136,8 +136,9 @@ Everything about one station, plus favouriting, directions, and history.
 - **Price History (30 days):** a bar chart with the date range and a "X.Xp – Y.Yp" label.
 - **Driver reports** (flag `shared.station-ratings`, default off): a separate section, labelled as
   not Fuel Finder data. Shows the average stars, the share of drivers who found the pump price
-  matched, and the average gap when it didn't (price figures once three drivers have checked a price), then moderated
-  comments 20 at a time with **Report** and **Hide comments from this reviewer**. **Rate this
+  matched, and the average gap when it didn't (price figures once three drivers have checked a price), then each
+  driver's rating 20 at a time (stars and price report, plus the comment once moderation approves
+  it) with **Report** and **Hide comments from this reviewer** on published comments. **Rate this
   station** opens a bottom sheet: fuel, did the price match, what you paid (optional), 1–5 stars, a
   280-character comment. It first resolves whatever stops the user rating — sign-in (returns to
   Detail), the 7-day cooldown, email verification (link opens the website), a new or suspended

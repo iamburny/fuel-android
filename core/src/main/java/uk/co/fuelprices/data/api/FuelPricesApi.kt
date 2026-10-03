@@ -144,8 +144,13 @@ interface FuelPricesApi {
     // ── Station ratings ──────────────────────────────────
     // Every route answers 404 while the shared.station-ratings flag is off server-side.
 
+    // include=all lists every rating behind the score; an unpublished comment comes back null.
     @GET("api/stations/{id}/ratings")
-    suspend fun getStationRatings(@Path("id") stationId: Int, @Query("page") page: Int = 1): PublicRatingsResponse
+    suspend fun getStationRatings(
+        @Path("id") stationId: Int,
+        @Query("page") page: Int = 1,
+        @Query("include") include: String = "all",
+    ): PublicRatingsResponse
 
     @GET("api/ratings/mine")
     suspend fun getMyRating(@Query("station_id") stationId: Int): MyRatingResponse
