@@ -2,11 +2,16 @@ package uk.co.fuelprices.data.repository
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.Authenticator
 import okhttp3.Request
 import okhttp3.Response
@@ -25,10 +30,11 @@ import javax.inject.Singleton
  *
  * Refresh tokens rotate, and re-presenting a spent one long after rotation makes the backend
  * revoke every session the user has. So the stored refresh token is only replaced by a confirmed
- * successor. The session is dropped when the server rejects the refresh token (400/401), when a
- * retry carrying a freshly refreshed token still gets a 401, or when there is no refresh token to
- * try. A network failure, timeout, 5xx, 429 or unreadable refresh response leaves the stored
- * tokens alone so a later request can retry.
+ * successor. The session is dropped when the server rejects the refresh token (400/401), when it
+ * accepts it but the successor can't be used (an unreadable 2xx, or one that can't be saved; the
+ * old token is spent either way), when a retry carrying a freshly refreshed token still gets a
+ * 401, or when there is no refresh token to try. A network failure, timeout, 5xx or 429 leaves
+ * the stored tokens alone so a later request can retry.
  *
  * Refreshes hold [mutex], so only one is ever in flight. Sign-out doesn't wait for it: it clears
  * the store at once, and the store's conditional writes stop an in-flight refresh from writing the
@@ -41,6 +47,10 @@ class TokenAuthenticator @Inject constructor(
 ) : Authenticator {
     private val mutex = Mutex()
     private val revokeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // The refresh token whose last refresh call got no answer (timeout, dropped connection), so
+    // the server may still be processing it. Only read or written under [mutex].
+    private var unansweredRefreshToken: String? = null
 
     override fun authenticate(route: Route?, response: Response): Request? {
         // Only ever try to refresh a request that was actually sent with a Bearer token — an
@@ -83,11 +93,16 @@ class TokenAuthenticator @Inject constructor(
 
                 when (val outcome = refresh(refreshToken)) {
                     is RefreshOutcome.Refreshed -> {
-                        val saved = tokenStore.saveRefreshedTokens(
-                            expectedRefreshToken = refreshToken,
-                            token = outcome.accessToken,
-                            refreshToken = outcome.refreshToken,
-                        )
+                        val saved = try {
+                            tokenStore.saveRefreshedTokens(
+                                expectedRefreshToken = refreshToken,
+                                token = outcome.accessToken,
+                                refreshToken = outcome.refreshToken,
+                            )
+                        } catch (e: Exception) {
+                            abandonSession(stored, outcome.refreshToken)
+                            return@withLock null
+                        }
                         if (saved) {
                             response.request.withBearer(outcome.accessToken)
                         } else {
@@ -102,6 +117,10 @@ class TokenAuthenticator @Inject constructor(
                         // Conditional, so a sign-in that landed mid-refresh isn't wiped.
                         tokenStore.clearIfUnchanged(stored)
                         null // null => OkHttp gives up and surfaces the original 401.
+                    }
+                    is RefreshOutcome.Spent -> {
+                        abandonSession(stored, outcome.issuedRefreshToken)
+                        null
                     }
                     RefreshOutcome.Unavailable -> null
                 }
@@ -119,40 +138,82 @@ class TokenAuthenticator @Inject constructor(
      * The revoke of the cleared token itself waits on [mutex], so it reaches the server only after
      * an in-flight refresh presenting that same token has finished. Revoking it first would make
      * the refresh look like reuse of a revoked token, which the backend answers by revoking every
-     * session the user has. Revokes are best-effort and their results ignored. [revoke] is false
+     * session the user has. For the same reason it is skipped when the last refresh of that token
+     * got no answer, since that request may still reach the server after the revoke; the token is
+     * then left to expire. Revokes are best-effort and their results ignored. [revoke] is false
      * where the server has already dropped the session, such as after deleting the account.
+     *
+     * Non-cancellable so that leaving the screen mid-sign-out can't clear the store without
+     * scheduling the revoke.
      */
-    suspend fun signOut(revoke: Boolean = true) {
+    suspend fun signOut(revoke: Boolean = true) = withContext(NonCancellable) {
         val refreshToken = tokenStore.takeRefreshTokenAndClear()
         if (revoke && refreshToken != null) {
-            revokeScope.launch { mutex.withLock { revoke(refreshToken) } }
+            revokeScope.launch {
+                mutex.withLock {
+                    if (refreshToken != unansweredRefreshToken) revoke(refreshToken)
+                }
+            }
         }
     }
 
+    /**
+     * The server spent the stored refresh token but its successor can't be kept. Holding on to the
+     * spent one would revoke every session the user has the next time it's presented, so this
+     * device's session is dropped instead (unless a sign-in has replaced it), and the successor,
+     * if one was readable, is revoked so it isn't left live.
+     */
+    private suspend fun abandonSession(stored: StoredTokens, issuedRefreshToken: String?) {
+        try {
+            tokenStore.clearIfUnchanged(stored)
+        } catch (e: Exception) {
+            // Storage is failing; the revoke below still goes out.
+        }
+        issuedRefreshToken?.let { revoke(it) }
+    }
+
     private fun revoke(refreshToken: String) {
-        authApi.logout(LogoutRequest(refreshToken)).enqueue(IgnoreResult)
+        try {
+            authApi.logout(LogoutRequest(refreshToken)).enqueue(IgnoreResult)
+        } catch (e: Exception) {
+            // Best-effort: a revoke that can't be sent is dropped.
+        }
     }
 
     private fun refresh(refreshToken: String): RefreshOutcome {
         val response = try {
             authApi.refresh(RefreshRequest(refreshToken)).execute()
         } catch (e: Exception) {
-            // Offline, timeout, DNS, or a body that couldn't be parsed.
+            // Offline, timeout, DNS: no status came back.
+            unansweredRefreshToken = refreshToken
             return RefreshOutcome.Unavailable
         }
-        if (response.isSuccessful) {
-            val body = response.body()
-            val rotated = body?.refreshToken
-            // Without a successor the old token is the only one held, so keep it.
-            if (body == null || rotated == null) return RefreshOutcome.Unavailable
-            return RefreshOutcome.Refreshed(body.accessToken, rotated)
+        unansweredRefreshToken = null
+        if (!response.isSuccessful) {
+            response.errorBody()?.close()
+            return when (response.code()) {
+                400, 401 -> RefreshOutcome.Rejected
+                else -> RefreshOutcome.Unavailable
+            }
         }
-        response.errorBody()?.close()
-        return when (response.code()) {
-            400, 401 -> RefreshOutcome.Rejected
-            else -> RefreshOutcome.Unavailable
+        // A 2xx: the server has spent the token sent, whatever happens reading the body.
+        val body = try {
+            response.body()?.use { it.string() }
+        } catch (e: Exception) {
+            null
+        }
+        val fields = body?.let { runCatching { Json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
+        val accessToken = fields?.stringField("access_token")
+        val rotated = fields?.stringField("refresh_token")
+        return if (accessToken != null && rotated != null) {
+            RefreshOutcome.Refreshed(accessToken, rotated)
+        } else {
+            RefreshOutcome.Spent(rotated)
         }
     }
+
+    private fun JsonObject.stringField(name: String): String? =
+        (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotEmpty() }
 
     private fun Request.withBearer(token: String): Request =
         newBuilder().header("Authorization", "Bearer $token").build()
@@ -171,7 +232,9 @@ class TokenAuthenticator @Inject constructor(
         data class Refreshed(val accessToken: String, val refreshToken: String) : RefreshOutcome
         /** The server refused the refresh token itself. */
         data object Rejected : RefreshOutcome
-        /** The refresh didn't complete; the refresh token may still be valid. */
+        /** The server accepted the refresh token, but the response can't be used. */
+        data class Spent(val issuedRefreshToken: String?) : RefreshOutcome
+        /** No answer from the server, or a 5xx/429; the refresh token may still be valid. */
         data object Unavailable : RefreshOutcome
     }
 

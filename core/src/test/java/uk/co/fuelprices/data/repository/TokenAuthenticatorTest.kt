@@ -6,6 +6,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
@@ -16,6 +17,7 @@ import okhttp3.mockwebserver.RecordedRequest
 import okhttp3.mockwebserver.SocketPolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -30,6 +32,7 @@ class TokenAuthenticatorTest {
 
     private lateinit var server: MockWebServer
     private lateinit var authenticator: TokenAuthenticator
+    private lateinit var tokenStore: TokenStore
 
     // In-memory stand-in for the DataStore-backed TokenStore.
     @Volatile private var storedToken: String? = null
@@ -47,7 +50,7 @@ class TokenAuthenticatorTest {
             .build()
             .create(AuthSessionApi::class.java)
 
-        val tokenStore = mockk<TokenStore>()
+        tokenStore = mockk()
         coEvery { tokenStore.getTokens() } answers { synchronized(lock) { StoredTokens(storedToken, storedRefreshToken) } }
         coEvery { tokenStore.clearIfUnchanged(any()) } answers {
             synchronized(lock) {
@@ -139,20 +142,73 @@ class TokenAuthenticatorTest {
     }
 
     @Test
-    fun `a malformed refresh response keeps the stored tokens`() {
+    fun `an unreadable 2xx from refresh drops the session, since the old token is spent`() {
         server.enqueue(MockResponse().setHeader("Content-Type", "application/json").setBody("<html>oops</html>"))
 
         assertNull(authenticator.authenticate(null, unauthorized()))
-        assertEquals("old-refresh", storedRefreshToken)
+        assertNull(storedToken)
+        assertNull(storedRefreshToken)
+        server.takeRequest(5, TimeUnit.SECONDS) // the refresh
+        assertNull(server.takeRequest(300, TimeUnit.MILLISECONDS))
     }
 
     @Test
-    fun `a refresh response without a rotated refresh token keeps the stored tokens`() {
+    fun `a 2xx cut off mid-body drops the session`() {
+        server.enqueue(
+            refreshed().setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY)
+        )
+
+        assertNull(authenticator.authenticate(null, unauthorized()))
+        assertNull(storedRefreshToken)
+    }
+
+    @Test
+    fun `a 2xx without a rotated refresh token drops the session`() {
         server.enqueue(MockResponse().setHeader("Content-Type", "application/json").setBody("""{"access_token":"new-access"}"""))
 
         assertNull(authenticator.authenticate(null, unauthorized()))
-        assertEquals("old-access", storedToken)
-        assertEquals("old-refresh", storedRefreshToken)
+        assertNull(storedToken)
+        assertNull(storedRefreshToken)
+    }
+
+    @Test
+    fun `a 2xx without an access token drops the session and revokes the token it carried`() {
+        server.enqueue(MockResponse().setHeader("Content-Type", "application/json").setBody("""{"refresh_token":"new-refresh"}"""))
+
+        assertNull(authenticator.authenticate(null, unauthorized()))
+        assertNull(storedRefreshToken)
+        server.takeRequest(5, TimeUnit.SECONDS) // the refresh
+        val logout = server.takeRequest(5, TimeUnit.SECONDS)
+        assertEquals("/api/auth/logout", logout?.path)
+        assertEquals("""{"refresh_token":"new-refresh"}""", logout?.body?.readUtf8())
+    }
+
+    @Test
+    fun `an unusable 2xx does not wipe a session stored while it was in flight`() {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                storedToken = "login-access"
+                storedRefreshToken = "login-refresh"
+                return MockResponse().setBody("not json")
+            }
+        }
+
+        assertNull(authenticator.authenticate(null, unauthorized()))
+        assertEquals("login-refresh", storedRefreshToken)
+    }
+
+    @Test
+    fun `a failure saving the rotated pair drops the session and revokes the new token`() {
+        coEvery { tokenStore.saveRefreshedTokens(any(), any(), any()) } throws java.io.IOException("disk full")
+        server.enqueue(refreshed())
+        server.enqueue(MockResponse())
+
+        assertNull(authenticator.authenticate(null, unauthorized()))
+        assertNull(storedRefreshToken)
+        server.takeRequest(5, TimeUnit.SECONDS) // the refresh
+        val logout = server.takeRequest(5, TimeUnit.SECONDS)
+        assertEquals("/api/auth/logout", logout?.path)
+        assertEquals("""{"refresh_token":"new-refresh"}""", logout?.body?.readUtf8())
     }
 
     @Test
@@ -299,6 +355,63 @@ class TokenAuthenticatorTest {
         val only = server.takeRequest(5, TimeUnit.SECONDS)
         assertEquals("/api/auth/logout", only?.path)
         assertNull(server.takeRequest(300, TimeUnit.MILLISECONDS))
+    }
+
+    @Test
+    fun `a refresh blocked on the mutex when sign-out clears does not refresh`() {
+        val refreshReceived = CountDownLatch(1)
+        val releaseRefresh = CountDownLatch(1)
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
+                "/api/auth/refresh" -> {
+                    refreshReceived.countDown()
+                    releaseRefresh.await(5, TimeUnit.SECONDS)
+                    MockResponse().setResponseCode(503)
+                }
+                else -> MockResponse()
+            }
+        }
+
+        val first = thread { authenticator.authenticate(null, unauthorized()) }
+        assertTrue(refreshReceived.await(5, TimeUnit.SECONDS))
+        val second = thread { authenticator.authenticate(null, unauthorized()) }
+        runBlocking { authenticator.signOut() }
+        releaseRefresh.countDown()
+        first.join(5_000)
+        second.join(5_000)
+
+        val paths = generateSequence { server.takeRequest(300, TimeUnit.MILLISECONDS) }.map { it.path }.toList()
+        assertEquals(listOf("/api/auth/refresh", "/api/auth/logout"), paths)
+    }
+
+    @Test
+    fun `sign-out skips revoking a token whose refresh got no answer`() {
+        val impatient = TokenAuthenticator(
+            tokenStore,
+            Retrofit.Builder()
+                .baseUrl(server.url("/"))
+                .client(OkHttpClient.Builder().readTimeout(200, TimeUnit.MILLISECONDS).build())
+                .addConverterFactory(Json.asConverterFactory("application/json".toMediaType()))
+                .build()
+                .create(AuthSessionApi::class.java),
+        )
+        val logoutSeen = java.util.concurrent.atomic.AtomicBoolean(false)
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                if (request.path == "/api/auth/logout") logoutSeen.set(true)
+                // The refresh answers only after the client has given up waiting.
+                return MockResponse().setHeadersDelay(1, TimeUnit.SECONDS)
+            }
+        }
+
+        assertNull(impatient.authenticate(null, unauthorized()))
+        assertEquals("old-refresh", storedRefreshToken)
+        runBlocking { impatient.signOut() }
+
+        assertNull(storedRefreshToken)
+        Thread.sleep(500)
+        assertEquals(1, server.requestCount)
+        assertFalse(logoutSeen.get())
     }
 
     @Test
