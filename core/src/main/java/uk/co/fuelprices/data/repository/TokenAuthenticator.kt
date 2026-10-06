@@ -21,6 +21,12 @@ import retrofit2.Callback
 import uk.co.fuelprices.data.api.AuthSessionApi
 import uk.co.fuelprices.data.api.LogoutRequest
 import uk.co.fuelprices.data.api.RefreshRequest
+import java.io.IOException
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import javax.net.ssl.SSLHandshakeException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -48,8 +54,9 @@ class TokenAuthenticator @Inject constructor(
     private val mutex = Mutex()
     private val revokeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // The refresh token whose last refresh call got no answer (timeout, dropped connection), so
-    // the server may still be processing it. Only read or written under [mutex].
+    // The refresh token whose last refresh may have reached the server without an answer coming
+    // back (timeout, dropped connection, gateway error), so the server may still be processing
+    // it. Only read or written under [mutex].
     private var unansweredRefreshToken: String? = null
 
     override fun authenticate(route: Route?, response: Response): Request? {
@@ -167,7 +174,10 @@ class TokenAuthenticator @Inject constructor(
         try {
             tokenStore.clearIfUnchanged(stored)
         } catch (e: Exception) {
-            // Storage is failing; the revoke below still goes out.
+            // The spent token is still stored. Leave its successor live: while it is, re-presenting
+            // the spent one falls in the backend's grace window and gets a fresh pair, whereas a
+            // revoked successor would make it look like reuse and revoke every session.
+            return
         }
         issuedRefreshToken?.let { revoke(it) }
     }
@@ -181,21 +191,36 @@ class TokenAuthenticator @Inject constructor(
     }
 
     private fun refresh(refreshToken: String): RefreshOutcome {
-        val response = try {
-            authApi.refresh(RefreshRequest(refreshToken)).execute()
-        } catch (e: Exception) {
-            // Offline, timeout, DNS: no status came back.
-            unansweredRefreshToken = refreshToken
+        var mayHaveReachedServer = false
+        var response: retrofit2.Response<okhttp3.ResponseBody>? = null
+        // A second attempt only follows a failure after which the request may have been
+        // processed: if the server rotated the token and the response was lost, re-presenting it
+        // straight away falls in the backend's grace window and gets a fresh pair.
+        for (attempt in 1..2) {
+            try {
+                response = authApi.refresh(RefreshRequest(refreshToken)).execute()
+                break
+            } catch (e: Exception) {
+                if (neverSent(e)) break
+                mayHaveReachedServer = true
+                if (e !is IOException) break
+            }
+        }
+        if (response == null) {
+            unansweredRefreshToken = if (mayHaveReachedServer) refreshToken else null
             return RefreshOutcome.Unavailable
         }
-        unansweredRefreshToken = null
         if (!response.isSuccessful) {
             response.errorBody()?.close()
-            return when (response.code()) {
+            val code = response.code()
+            // A gateway error says nothing about whether the origin processed the rotation.
+            unansweredRefreshToken = if (code in GATEWAY_ERRORS) refreshToken else null
+            return when (code) {
                 400, 401 -> RefreshOutcome.Rejected
                 else -> RefreshOutcome.Unavailable
             }
         }
+        unansweredRefreshToken = null
         // A 2xx: the server has spent the token sent, whatever happens reading the body.
         val body = try {
             response.body()?.use { it.string() }
@@ -211,6 +236,15 @@ class TokenAuthenticator @Inject constructor(
             RefreshOutcome.Spent(rotated)
         }
     }
+
+    /** Failures that happen before the request is written: nothing reached the server. A connect
+     *  timeout surfaces as a [SocketTimeoutException] whose message names the connect. */
+    private fun neverSent(e: Exception): Boolean =
+        e is ConnectException ||
+            e is UnknownHostException ||
+            e is NoRouteToHostException ||
+            e is SSLHandshakeException ||
+            (e is SocketTimeoutException && e.message?.contains("connect", ignoreCase = true) == true)
 
     private fun JsonObject.stringField(name: String): String? =
         (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotEmpty() }
@@ -234,7 +268,7 @@ class TokenAuthenticator @Inject constructor(
         data object Rejected : RefreshOutcome
         /** The server accepted the refresh token, but the response can't be used. */
         data class Spent(val issuedRefreshToken: String?) : RefreshOutcome
-        /** No answer from the server, or a 5xx/429; the refresh token may still be valid. */
+        /** No usable answer from the server (or a 5xx/429); the refresh token may still be valid. */
         data object Unavailable : RefreshOutcome
     }
 
@@ -247,5 +281,8 @@ class TokenAuthenticator @Inject constructor(
         // The original request plus one retry with a refreshed token, and one more if a different
         // session was stored by the time that retry failed.
         const val MAX_RETRIES = 2
+
+        // Bad gateway, unavailable, gateway timeout, and Cloudflare's origin errors.
+        val GATEWAY_ERRORS = setOf(502, 503, 504, 520, 521, 522, 523, 524)
     }
 }

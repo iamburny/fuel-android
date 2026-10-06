@@ -61,10 +61,6 @@ class TokenStore @Inject constructor(@ApplicationContext private val context: Co
         return saved
     }
 
-    suspend fun clear() {
-        context.dataStore.edit { it.clear() }
-    }
-
     /** Clears the session only if [expected] is still what's stored, so a newer sign-in isn't
      *  wiped. Atomic like [saveRefreshedTokens]. */
     suspend fun clearIfUnchanged(expected: StoredTokens) {
