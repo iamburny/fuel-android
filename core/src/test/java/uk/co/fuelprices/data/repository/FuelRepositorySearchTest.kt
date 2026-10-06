@@ -46,7 +46,7 @@ class FuelRepositorySearchTest {
         dao = FakeStationDao()
         val db = mockk<FuelDatabase>()
         every { db.stationDao() } returns dao
-        repo = FuelRepository(api, db, mockk(relaxed = true))
+        repo = FuelRepository(api, db, mockk(relaxed = true), mockk(relaxed = true))
     }
 
     // ── Coordinate forwarding ────────────────────────────

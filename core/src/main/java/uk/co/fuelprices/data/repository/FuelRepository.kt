@@ -30,6 +30,7 @@ class FuelRepository @Inject constructor(
     private val api: FuelPricesApi,
     private val db: FuelDatabase,
     private val tokenStore: TokenStore,
+    private val authenticator: TokenAuthenticator,
 ) {
     private val dao = db.stationDao()
 
@@ -235,13 +236,15 @@ class FuelRepository @Inject constructor(
 
     suspend fun updatePreferences(body: PreferencesDto): PreferencesDto = api.updatePreferences(body)
 
-    suspend fun logout() = tokenStore.clear()
+    /** Signs out locally and revokes this device's refresh token on the server in the background
+     *  (see [TokenAuthenticator.signOut]). Never fails because the server couldn't be reached. */
+    suspend fun logout() = authenticator.signOut()
 
     /** Permanently deletes the account on the server, then signs out locally. Favourites and
      *  alerts live only on the server, so nothing else on the device needs clearing. */
     suspend fun deleteAccount() {
         ratingCall { api.deleteAccount() }
-        tokenStore.clear()
+        authenticator.signOut(revoke = false)
     }
 
     suspend fun requestEmailVerification(): VerifyEmailResponse = ratingCall { api.requestEmailVerification() }

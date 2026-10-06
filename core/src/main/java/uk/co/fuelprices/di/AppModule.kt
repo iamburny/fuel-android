@@ -18,6 +18,7 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import uk.co.fuelprices.core.BuildConfig
+import uk.co.fuelprices.data.api.AuthSessionApi
 import uk.co.fuelprices.data.api.FuelPricesApi
 import uk.co.fuelprices.data.db.FuelDatabase
 import uk.co.fuelprices.data.repository.TokenAuthenticator
@@ -52,31 +53,51 @@ object AppModule {
                 }
                 chain.proceed(request)
             }
-            // The backend issues a 24h JWT alongside a long-lived opaque refresh token.
+            // The backend issues a 24h JWT alongside a single-use refresh token.
             // TokenAuthenticator attempts one silent POST /api/auth/refresh on a 401 before
-            // giving up — only then does it clear the stored token, so isLoggedIn() flips to
-            // false and screens like Favourites show their normal signed-out state instead of a
-            // raw "HTTP 401" once the exception reaches them.
+            // giving up — once the session is genuinely dead (not on a network failure) it clears
+            // the stored token, so isLoggedIn() flips to false and screens like Favourites show
+            // their normal signed-out state instead of a raw "HTTP 401" once the exception reaches
+            // them.
             .authenticator(authenticator)
-            .addInterceptor(
-                HttpLoggingInterceptor().apply {
-                    level = if (BuildConfig.DEBUG)
-                        HttpLoggingInterceptor.Level.BODY
-                    else
-                        HttpLoggingInterceptor.Level.NONE
-                }
-            )
+            .addInterceptor(loggingInterceptor())
             .build()
     }
 
     @Provides
     @Singleton
-    fun provideRetrofit(client: OkHttpClient): Retrofit {
-        return Retrofit.Builder()
+    fun provideRetrofit(client: OkHttpClient): Retrofit = buildRetrofit(client)
+
+    /**
+     * Refresh and logout get their own client: no Bearer interceptor (they authenticate by the
+     * refresh token in the body) and no authenticator (a rejected refresh must not trigger another
+     * refresh). The call timeout bounds how long requests waiting on a refresh — and a sign-out
+     * queued behind it — can be held up.
+     */
+    @Provides
+    @Singleton
+    fun provideAuthSessionApi(): AuthSessionApi {
+        val client = OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .callTimeout(20, TimeUnit.SECONDS)
+            .addInterceptor(loggingInterceptor())
+            .build()
+        return buildRetrofit(client).create(AuthSessionApi::class.java)
+    }
+
+    private fun buildRetrofit(client: OkHttpClient): Retrofit =
+        Retrofit.Builder()
             .baseUrl(BuildConfig.API_BASE_URL.trimEnd('/') + "/")
             .client(client)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
+
+    private fun loggingInterceptor() = HttpLoggingInterceptor().apply {
+        level = if (BuildConfig.DEBUG)
+            HttpLoggingInterceptor.Level.BODY
+        else
+            HttpLoggingInterceptor.Level.NONE
     }
 
     @Provides

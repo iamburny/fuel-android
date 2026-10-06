@@ -283,6 +283,10 @@ data class ForgotPasswordRequest(val email: String)
 @Serializable
 data class RefreshRequest(@SerialName("refresh_token") val refreshToken: String)
 
+/** Sent to `POST /api/auth/logout` to revoke this device's refresh token on sign-out. */
+@Serializable
+data class LogoutRequest(@SerialName("refresh_token") val refreshToken: String)
+
 @Serializable
 data class TokenResponse(
     @SerialName("access_token") val accessToken: String,

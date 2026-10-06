@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Auto Backup on Android 11 and below. Everything is backed up except the auth DataStore: a
+     restored refresh token would already have been rotated or revoked, and presenting a spent one
+     makes the backend revoke every session the user has. -->
+<full-backup-content>
+    <exclude domain="file" path="datastore/auth.preferences_pb" />
+</full-backup-content>
