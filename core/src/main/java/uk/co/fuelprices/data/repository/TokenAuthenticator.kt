@@ -1,10 +1,12 @@
 package uk.co.fuelprices.data.repository
 
-import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import okhttp3.Authenticator
 import okhttp3.Request
 import okhttp3.Response
@@ -28,8 +30,9 @@ import javax.inject.Singleton
  * try. A network failure, timeout, 5xx, 429 or unreadable refresh response leaves the stored
  * tokens alone so a later request can retry.
  *
- * Refresh, give-up and [signOut] all hold [mutex], so only one refresh is ever in flight and a
- * sign-out can't interleave with one.
+ * Refreshes hold [mutex], so only one is ever in flight. Sign-out doesn't wait for it: it clears
+ * the store at once, and the store's conditional writes stop an in-flight refresh from writing the
+ * session back (see [signOut]).
  */
 @Singleton
 class TokenAuthenticator @Inject constructor(
@@ -37,6 +40,7 @@ class TokenAuthenticator @Inject constructor(
     private val authApi: AuthSessionApi,
 ) : Authenticator {
     private val mutex = Mutex()
+    private val revokeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun authenticate(route: Route?, response: Response): Request? {
         // Only ever try to refresh a request that was actually sent with a Bearer token — an
@@ -52,18 +56,20 @@ class TokenAuthenticator @Inject constructor(
         // be starved by other requests blocked here waiting on the mutex.
         return runBlocking {
             mutex.withLock {
-                // Signed out while this request was in flight — don't revive the session.
-                val currentAccessToken = tokenStore.getToken() ?: return@withLock null
+                val stored = tokenStore.getTokens()
+                // Signed out while this request was in flight — don't revive the session, and
+                // don't present a refresh token that sign-out is revoking.
+                val currentAccessToken = stored.token ?: return@withLock null
                 // Someone else already refreshed (or signed in) while we waited on the mutex —
                 // retry with what's now stored instead of refreshing a second time.
                 if (currentAccessToken != failedAccessToken) {
                     return@withLock response.request.withBearer(currentAccessToken)
                 }
 
-                val refreshToken = tokenStore.getRefreshToken()
+                val refreshToken = stored.refreshToken
                 if (refreshToken == null) {
                     // Nothing to recover with — genuinely signed out.
-                    tokenStore.clear()
+                    tokenStore.clearIfUnchanged(stored)
                     return@withLock null
                 }
                 // This was already a retry and the token it carried still 401'd, so the session
@@ -71,7 +77,7 @@ class TokenAuthenticator @Inject constructor(
                 // isLoggedIn() keeps reporting true and FavouritesViewModel shows the raw HTTP 401
                 // instead of routing to sign-in.
                 if (attempts > 1) {
-                    tokenStore.clearIfRefreshToken(refreshToken)
+                    tokenStore.clearIfUnchanged(stored)
                     return@withLock null
                 }
 
@@ -82,14 +88,19 @@ class TokenAuthenticator @Inject constructor(
                             token = outcome.accessToken,
                             refreshToken = outcome.refreshToken,
                         )
-                        // Not saved means a sign-in replaced the session mid-refresh; retry with
-                        // that session's token rather than the one just minted for the old one.
-                        val token = if (saved) outcome.accessToken else tokenStore.getToken()
-                        token?.let { response.request.withBearer(it) }
+                        if (saved) {
+                            response.request.withBearer(outcome.accessToken)
+                        } else {
+                            // Signed out (or a different sign-in stored) mid-refresh. The pair
+                            // just minted belongs to a session nobody holds any more, so revoke it
+                            // rather than leave it live, and let the original 401 stand.
+                            revoke(outcome.refreshToken)
+                            null
+                        }
                     }
                     RefreshOutcome.Rejected -> {
                         // Conditional, so a sign-in that landed mid-refresh isn't wiped.
-                        tokenStore.clearIfRefreshToken(refreshToken)
+                        tokenStore.clearIfUnchanged(stored)
                         null // null => OkHttp gives up and surfaces the original 401.
                     }
                     RefreshOutcome.Unavailable -> null
@@ -99,24 +110,27 @@ class TokenAuthenticator @Inject constructor(
     }
 
     /**
-     * Signs out locally, then revokes the refresh token on the server without waiting for it.
+     * Signs out locally at once, then revokes the refresh token on the server in the background.
      *
-     * Holding [mutex] means an in-flight refresh finishes first, so the token read here is its
-     * rotated successor (the one the server still honours), and nothing can write a session back
-     * after the clear. That wait can last up to the refresh call timeout, so it is non-cancellable:
-     * leaving the screen that started the sign-out mustn't abandon it. The revoke is best-effort:
-     * the local sign-out has already happened, and its result is ignored. [revoke] is false where
-     * the server has already dropped the session, such as after deleting the account.
+     * The clear doesn't wait for an in-flight refresh. That refresh's conditional save then fails,
+     * so it revokes the successor it was issued instead of storing it; any refresh that hasn't
+     * read the store yet finds it empty and doesn't refresh at all.
+     *
+     * The revoke of the cleared token itself waits on [mutex], so it reaches the server only after
+     * an in-flight refresh presenting that same token has finished. Revoking it first would make
+     * the refresh look like reuse of a revoked token, which the backend answers by revoking every
+     * session the user has. Revokes are best-effort and their results ignored. [revoke] is false
+     * where the server has already dropped the session, such as after deleting the account.
      */
     suspend fun signOut(revoke: Boolean = true) {
-        val refreshToken = withContext(NonCancellable) {
-            mutex.withLock {
-                tokenStore.getRefreshToken().also { tokenStore.clear() }
-            }
-        }
+        val refreshToken = tokenStore.takeRefreshTokenAndClear()
         if (revoke && refreshToken != null) {
-            authApi.logout(LogoutRequest(refreshToken)).enqueue(IgnoreResult)
+            revokeScope.launch { mutex.withLock { revoke(refreshToken) } }
         }
+    }
+
+    private fun revoke(refreshToken: String) {
+        authApi.logout(LogoutRequest(refreshToken)).enqueue(IgnoreResult)
     }
 
     private fun refresh(refreshToken: String): RefreshOutcome {
