@@ -38,8 +38,33 @@ class TokenStore @Inject constructor(@ApplicationContext private val context: Co
     suspend fun getEmail(): String? =
         context.dataStore.data.map { it[emailKey] }.first()
 
+    /**
+     * Stores a refreshed token pair, but only if [expectedRefreshToken] is still the stored refresh
+     * token — a sign-in that lands while the refresh call is in flight wins. The check and write
+     * are one DataStore transaction. Returns whether the pair was stored.
+     */
+    suspend fun saveRefreshedTokens(expectedRefreshToken: String, token: String, refreshToken: String): Boolean {
+        var saved = false
+        context.dataStore.edit {
+            if (it[refreshTokenKey] == expectedRefreshToken) {
+                it[tokenKey] = token
+                it[refreshTokenKey] = refreshToken
+                saved = true
+            }
+        }
+        return saved
+    }
+
     suspend fun clear() {
         context.dataStore.edit { it.clear() }
+    }
+
+    /** Clears the session only if [expectedRefreshToken] is still the stored refresh token, so a
+     *  newer sign-in isn't wiped. Atomic like [saveRefreshedTokens]. */
+    suspend fun clearIfRefreshToken(expectedRefreshToken: String) {
+        context.dataStore.edit {
+            if (it[refreshTokenKey] == expectedRefreshToken) it.clear()
+        }
     }
 
     suspend fun isLoggedIn(): Boolean = getToken() != null

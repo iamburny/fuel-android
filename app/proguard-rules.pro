@@ -33,6 +33,8 @@
 -keepattributes Signature,Exceptions
 -keep,allowobfuscation interface uk.co.fuelprices.data.api.FuelPricesApi
 -keepclassmembers,allowobfuscation interface uk.co.fuelprices.data.api.FuelPricesApi { *; }
+-keep,allowobfuscation interface uk.co.fuelprices.data.api.AuthSessionApi
+-keepclassmembers,allowobfuscation interface uk.co.fuelprices.data.api.AuthSessionApi { *; }
 
 # ── Car App Library ──────────────────────────────────────────────────────
 # The <service> and Screen classes are referenced from the merged manifest;
