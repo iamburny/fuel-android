@@ -159,6 +159,47 @@ class TokenAuthenticatorTest {
         assertEquals(List(2) { """{"refresh_token":"old-refresh"}""" }, bodies)
     }
 
+    /** An authenticator whose host resolves to [addresses], in that order, on the test server's port. */
+    private fun resolvingTo(vararg addresses: String) = TokenAuthenticator(
+        tokenStore,
+        Retrofit.Builder()
+            .baseUrl("http://localhost:${server.port}/")
+            .client(
+                OkHttpClient.Builder()
+                    .dns(object : okhttp3.Dns {
+                        override fun lookup(hostname: String) = addresses.map { java.net.InetAddress.getByName(it) }
+                    })
+                    .build()
+            )
+            .addConverterFactory(Json.asConverterFactory("application/json".toMediaType()))
+            .build()
+            .create(AuthSessionApi::class.java),
+    )
+
+    @Test
+    fun `a lost response is still retried when OkHttp's own retry to the next address can't connect`() {
+        // The host resolves to the server and then an address with nothing listening. OkHttp
+        // retries the dropped call on the second address itself and throws that ConnectException,
+        // with the failure that did reach the server suppressed inside it.
+        val twoAddresses = resolvingTo("127.0.0.1", "127.0.0.2")
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST))
+        server.enqueue(refreshed())
+
+        val retry = twoAddresses.authenticate(null, unauthorized())
+
+        assertEquals("Bearer new-access", retry?.header("Authorization"))
+        assertEquals("new-refresh", storedRefreshToken)
+    }
+
+    @Test
+    fun `a refresh refused on every address is not retried`() {
+        // OkHttp's own attempt on each address fails to connect, so the ConnectException it throws
+        // carries only connect failures: nothing reached the server.
+        assertNull(resolvingTo("127.0.0.2", "127.0.0.3").authenticate(null, unauthorized()))
+        assertEquals("old-refresh", storedRefreshToken)
+        assertEquals(0, server.requestCount)
+    }
+
     @Test
     fun `a refresh that never reached the server is not retried`() {
         val attempts = java.util.concurrent.atomic.AtomicInteger()

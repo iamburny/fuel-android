@@ -238,8 +238,17 @@ class TokenAuthenticator @Inject constructor(
     }
 
     /** Failures that happen before the request is written: nothing reached the server. A connect
-     *  timeout surfaces as a [SocketTimeoutException] whose message names the connect. */
-    private fun neverSent(e: Exception): Boolean =
+     *  timeout surfaces as a [SocketTimeoutException] whose message names the connect.
+     *
+     *  OkHttp retries a failed call on the host's next address by itself and, if that also fails,
+     *  throws the last failure with the earlier ones suppressed. A refresh whose response was lost
+     *  on one address and whose retry then couldn't connect to the next therefore surfaces as a
+     *  [ConnectException], though the first attempt did reach the server — so every suppressed
+     *  failure has to be a never-sent one too. */
+    private fun neverSent(e: Throwable): Boolean =
+        isConnectFailure(e) && e.suppressed.all { neverSent(it) }
+
+    private fun isConnectFailure(e: Throwable): Boolean =
         e is ConnectException ||
             e is UnknownHostException ||
             e is NoRouteToHostException ||
