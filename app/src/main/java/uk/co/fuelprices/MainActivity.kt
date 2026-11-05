@@ -25,6 +25,21 @@ import javax.inject.Inject
 
 const val EXTRA_STATION_ID = "stationId"
 
+/**
+ * The FCM data key carrying the station id. When the app is in the background or not running, the
+ * system tray shows a notification-style message itself and its tap launches this Activity with
+ * the data map as String extras, so `onMessageReceived` never runs to set [EXTRA_STATION_ID].
+ */
+const val FCM_EXTRA_STATION_ID = "station_id"
+
+/**
+ * The station a notification tap should open: the Int extra [FcmService] sets for a notification
+ * it built in the foreground, else the String extra the system tray passes through from the FCM
+ * data payload. Null (no positive id from either) means the tap wasn't for a station.
+ */
+fun notificationStationId(intExtra: Int, fcmStringExtra: String?): Int? =
+    intExtra.takeIf { it > 0 } ?: fcmStringExtra?.toIntOrNull()?.takeIf { it > 0 }
+
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
@@ -51,7 +66,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        pendingTarget = targetFromIntent(intent)
+        // On recreation (rotation, theme change, process-death restore) the restored back stack is
+        // already showing the target, so navigating again would push a second copy of it.
+        if (savedInstanceState == null) pendingTarget = targetFromIntent(intent)
 
         // Count this launch once per cold start (not on config-change recreation).
         if (savedInstanceState == null) {
@@ -94,10 +111,13 @@ class MainActivity : ComponentActivity() {
 
     private fun targetFromIntent(intent: Intent?): DeepLinkTarget? {
         if (intent == null) return null
-        // FCM price-drop notification tap → open that station's Detail (unchanged behaviour).
-        intent.getIntExtra(EXTRA_STATION_ID, -1).takeIf { it > 0 }?.let {
-            return DeepLinkTarget.Station(it)
-        }
+        // Reopening from Recents redelivers the original launch intent; the tap was already handled.
+        if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return null
+        // FCM price-drop notification tap → open that station's Detail.
+        notificationStationId(
+            intent.getIntExtra(EXTRA_STATION_ID, -1),
+            intent.getStringExtra(FCM_EXTRA_STATION_ID),
+        )?.let { return DeepLinkTarget.Station(it) }
         // App Link: map the tapped https://fueltracker.uk/... URL to an in-app destination.
         if (intent.action == Intent.ACTION_VIEW) {
             intent.data?.let { return DeepLinkTarget.fromUri(it) }
