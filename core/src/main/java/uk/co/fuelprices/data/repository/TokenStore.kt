@@ -12,6 +12,9 @@ import javax.inject.Singleton
 
 private val Context.dataStore by preferencesDataStore(name = "auth")
 
+/** The access and refresh tokens as read together in one DataStore snapshot. */
+data class StoredTokens(val token: String?, val refreshToken: String?)
+
 @Singleton
 class TokenStore @Inject constructor(@ApplicationContext private val context: Context) {
 
@@ -35,11 +38,46 @@ class TokenStore @Inject constructor(@ApplicationContext private val context: Co
     suspend fun getRefreshToken(): String? =
         context.dataStore.data.map { it[refreshTokenKey] }.first()
 
+    suspend fun getTokens(): StoredTokens =
+        context.dataStore.data.map { StoredTokens(it[tokenKey], it[refreshTokenKey]) }.first()
+
     suspend fun getEmail(): String? =
         context.dataStore.data.map { it[emailKey] }.first()
 
-    suspend fun clear() {
-        context.dataStore.edit { it.clear() }
+    /**
+     * Stores a refreshed token pair, but only if [expectedRefreshToken] is still the stored refresh
+     * token — a sign-in that lands while the refresh call is in flight wins. The check and write
+     * are one DataStore transaction. Returns whether the pair was stored.
+     */
+    suspend fun saveRefreshedTokens(expectedRefreshToken: String, token: String, refreshToken: String): Boolean {
+        var saved = false
+        context.dataStore.edit {
+            if (it[refreshTokenKey] == expectedRefreshToken) {
+                it[tokenKey] = token
+                it[refreshTokenKey] = refreshToken
+                saved = true
+            }
+        }
+        return saved
+    }
+
+    /** Clears the session only if [expected] is still what's stored, so a newer sign-in isn't
+     *  wiped. Atomic like [saveRefreshedTokens]. */
+    suspend fun clearIfUnchanged(expected: StoredTokens) {
+        context.dataStore.edit {
+            if (it[tokenKey] == expected.token && it[refreshTokenKey] == expected.refreshToken) it.clear()
+        }
+    }
+
+    /** Clears the session and returns the refresh token it held, in one transaction, so nothing
+     *  can store a token between the read and the clear. */
+    suspend fun takeRefreshTokenAndClear(): String? {
+        var refreshToken: String? = null
+        context.dataStore.edit {
+            refreshToken = it[refreshTokenKey]
+            it.clear()
+        }
+        return refreshToken
     }
 
     suspend fun isLoggedIn(): Boolean = getToken() != null

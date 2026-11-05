@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Auto Backup and device-to-device transfer on Android 12+. Everything is included except the
+     auth DataStore, for the same reason as backup_rules.xml: a copied refresh token is either
+     spent or still live on the old device, and presenting a spent one makes the backend revoke
+     every session the user has. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="datastore/auth.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="datastore/auth.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>

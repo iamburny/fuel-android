@@ -24,6 +24,7 @@ class FuelRepositoryTest {
     private lateinit var dao: StationDao
     private lateinit var db: FuelDatabase
     private lateinit var tokenStore: TokenStore
+    private lateinit var authenticator: TokenAuthenticator
     private lateinit var repo: FuelRepository
 
     @Before
@@ -32,8 +33,9 @@ class FuelRepositoryTest {
         dao = mockk(relaxed = true)
         db = mockk(relaxed = true)
         tokenStore = mockk(relaxed = true)
+        authenticator = mockk(relaxed = true)
         every { db.stationDao() } returns dao
-        repo = FuelRepository(api, db, tokenStore)
+        repo = FuelRepository(api, db, tokenStore, authenticator)
     }
 
     @Test
@@ -150,7 +152,7 @@ class FuelRepositoryTest {
     fun `deleteAccount signs out locally only after the server deletes the account`() = runTest {
         repo.deleteAccount()
         coVerify { api.deleteAccount() }
-        coVerify { tokenStore.clear() }
+        coVerify { authenticator.signOut(revoke = false) }
     }
 
     @Test
@@ -162,7 +164,13 @@ class FuelRepositoryTest {
         } catch (_: RatingException) {
         }
 
-        coVerify(exactly = 0) { tokenStore.clear() }
+        coVerify(exactly = 0) { authenticator.signOut(any()) }
+    }
+
+    @Test
+    fun `logout signs out through the authenticator so the refresh token is revoked`() = runTest {
+        repo.logout()
+        coVerify { authenticator.signOut(revoke = true) }
     }
 
     @Test
